@@ -1,0 +1,1524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>BC Warehouse Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;800;900&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<script src="https://unpkg.com/@zxing/library@0.20.0/umd/index.min.js"></script>
+<style>
+:root{
+  --bg:#0b0d13;--surface:#13161f;--card:#191c28;--border:#252a3a;
+  --accent:#f0a500;--green:#1fd480;--red:#ff4d4d;--purple:#a78bfa;
+  --bealls:#f472b6;--sjl:#60a5fa;--text:#e6e8f0;--muted:#5a6080;
+  --font:'Barlow Condensed',sans-serif;--body:'Barlow',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font-family:var(--body);-webkit-font-smoothing:antialiased}
+input,button,select,textarea{font-family:var(--body)}
+button{cursor:pointer}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes pop{0%{transform:scale(.94);opacity:0}100%{transform:scale(1);opacity:1}}
+@keyframes slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.spin{animation:spin .7s linear infinite}
+.pulse{animation:pulse 1.8s infinite}
+.pop{animation:pop .18s cubic-bezier(.34,1.56,.64,1) both}
+.slide-up{animation:slideUp .2s ease both}
+
+/* Layout */
+#app{display:flex;flex-direction:column;min-height:100vh}
+.main{max-width:1100px;margin:0 auto;padding:20px 16px;width:100%}
+.narrow{max-width:700px}
+
+/* Loading */
+#loading{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:9999}
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%}
+
+/* Name screen */
+#name-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.name-card{background:var(--card);border:1.5px solid var(--border);border-radius:16px;padding:40px 32px;width:100%;max-width:380px;text-align:center}
+.name-card h1{font-family:var(--font);font-size:3.2rem;font-weight:900;color:var(--accent);letter-spacing:.04em;line-height:1;margin-bottom:4px}
+.name-card p{color:var(--muted);font-size:.85rem;margin-bottom:24px}
+
+/* Header */
+header{background:var(--surface);border-bottom:2px solid var(--accent);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;position:sticky;top:0;z-index:200}
+.h-title{font-family:var(--font);font-size:1.4rem;font-weight:900;color:var(--accent);letter-spacing:.05em}
+.h-sub{font-size:.7rem;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:2px}
+.live-dot{width:7px;height:7px;background:var(--green);border-radius:50%;display:inline-block}
+.tab-nav{display:flex;gap:8px}
+
+/* Buttons */
+.btn{border:none;border-radius:8px;padding:0 22px;height:46px;font-family:var(--font);font-size:1rem;font-weight:800;letter-spacing:.06em;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:opacity .15s,transform .1s;cursor:pointer}
+.btn:active{transform:scale(.97)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn-accent{background:var(--accent);color:#000}
+.btn-green{background:var(--green);color:#000}
+.btn-purple{background:var(--purple);color:#000}
+.btn-outline{background:transparent;border:1.5px solid var(--border);color:var(--muted)}
+.btn-outline:hover{border-color:var(--text);color:var(--text)}
+.btn-sm{height:34px;padding:0 14px;font-size:.82rem}
+.btn-tab{background:transparent;border:1.5px solid var(--border);color:var(--muted);padding:7px 16px;border-radius:6px;font-family:var(--font);font-size:.88rem;font-weight:700;letter-spacing:.06em;transition:all .15s;cursor:pointer}
+.btn-tab:hover{border-color:var(--accent);color:var(--accent)}
+.btn-tab.active{background:var(--accent);color:#000;border-color:var(--accent)}
+
+/* Inputs */
+.inp{background:var(--bg);border:2px solid var(--border);border-radius:8px;color:var(--text);outline:none;transition:border-color .15s;padding:12px 14px}
+.inp:focus{border-color:var(--accent)}
+.inp:disabled{opacity:.45}
+.inp-lg{font-size:1.4rem;font-family:var(--font);font-weight:700;letter-spacing:.06em}
+.inp-md{font-size:1.1rem;font-family:var(--font);font-weight:700}
+.inp-sm{font-size:.88rem;padding:7px 12px}
+
+/* Cards */
+.card{background:var(--card);border:1.5px solid var(--border);border-radius:12px}
+.p16{padding:16px}
+.p20{padding:20px}
+
+/* Sticky scan bar */
+.scan-bar{position:sticky;top:62px;z-index:100;background:var(--card);border:1.5px solid var(--border);border-radius:0 0 12px 12px;padding:16px 20px;margin-bottom:16px}
+
+/* Result cards */
+.result-order{background:#091f10;border:2px solid var(--green);border-radius:12px;padding:18px 20px;margin-bottom:16px}
+.result-715{background:#10102a;border:2px solid var(--purple);border-radius:12px;padding:18px 20px;margin-bottom:16px}
+.result-unknown{background:#1f0a0a;border:2px solid var(--red);border-radius:12px;padding:18px 20px;margin-bottom:16px}
+.result-dest{font-family:var(--font);font-size:1.8rem;font-weight:800;line-height:1.1;margin-bottom:4px}
+
+/* Pallet lock banner */
+.pallet-lock{background:rgba(240,165,0,.1);border:1px solid var(--accent);border-radius:8px;padding:8px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;font-size:.85rem}
+
+/* Badges */
+.badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:.75rem;font-weight:700;border:1px solid;white-space:nowrap}
+.b-bealls{background:rgba(244,114,182,.12);border-color:var(--bealls);color:var(--bealls)}
+.b-sjl{background:rgba(96,165,250,.12);border-color:var(--sjl);color:var(--sjl)}
+.b-green{background:rgba(31,212,128,.12);border-color:var(--green);color:var(--green)}
+.b-purple{background:rgba(167,139,250,.12);border-color:var(--purple);color:var(--purple)}
+.b-amber{background:rgba(240,165,0,.12);border-color:var(--accent);color:var(--accent)}
+.b-red{background:rgba(255,77,77,.12);border-color:var(--red);color:var(--red)}
+
+/* KPI */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.kpi{padding:16px 18px}
+.kpi-lbl{font-family:var(--font);font-size:.65rem;font-weight:700;letter-spacing:.12em;color:var(--muted);margin-bottom:4px}
+.kpi-val{font-family:var(--font);font-size:2rem;font-weight:900;line-height:1}
+.kpi-sub{font-size:.72rem;color:var(--muted);margin-top:3px}
+
+/* Table */
+.tbl-wrap{overflow-x:auto;border-radius:10px;border:1.5px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:.84rem}
+thead tr{background:var(--surface)}
+th{padding:10px 14px;text-align:left;font-family:var(--font);font-size:.68rem;font-weight:700;letter-spacing:.1em;color:var(--muted);border-bottom:1.5px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none}
+th:hover{color:var(--accent)}
+td{padding:9px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover td{background:rgba(255,255,255,.02)}
+
+/* Progress bar */
+.prog{height:5px;background:var(--border);border-radius:3px;overflow:hidden;width:80px;flex-shrink:0}
+.prog-fill{height:100%;border-radius:3px}
+
+/* Feed rows */
+.feed-row{display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.feed-row:last-child{border-bottom:none}
+
+/* Pallet card */
+.pallet-card{padding:16px 18px;margin-bottom:10px}
+.pallet-id{font-family:var(--font);font-size:1.3rem;font-weight:900;color:var(--accent)}
+.item-tag{padding:3px 10px;border-radius:6px;font-size:.78rem;font-weight:600;background:var(--surface);border:1px solid var(--border)}
+
+/* Modal */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:800;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal{background:var(--card);border:1.5px solid var(--border);border-radius:16px;padding:28px;width:100%;max-width:440px;max-height:90vh;overflow-y:auto}
+
+/* Toast */
+#toast{position:fixed;bottom:24px;right:24px;padding:12px 18px;border-radius:10px;font-size:.88rem;font-weight:500;z-index:9998;display:none;background:var(--card);border:1.5px solid var(--border);box-shadow:0 8px 24px rgba(0,0,0,.5);max-width:300px}
+
+/* Misc */
+.section-lbl{font-family:var(--font);font-size:.68rem;font-weight:700;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;margin-bottom:8px}
+.empty{text-align:center;padding:48px 20px;color:var(--muted);font-size:.9rem}
+.flex{display:flex}.gap8{gap:8px}.gap10{gap:10px}.gap12{gap:12px}
+.wrap{flex-wrap:wrap}.center{align-items:center}.between{justify-content:space-between}
+.mb8{margin-bottom:8px}.mb12{margin-bottom:12px}.mb16{margin-bottom:16px}.mb20{margin-bottom:20px}
+.mt8{margin-top:8px}.mt12{margin-top:12px}
+.w100{width:100%}
+@media(max-width:640px){.kpi-grid{grid-template-columns:repeat(2,1fr)}.hide-sm{display:none!important}}
+</style>
+</head>
+<body>
+<div id="loading">
+  <div class="spinner spin"></div>
+  <div style="font-family:var(--font);font-size:.85rem;letter-spacing:.1em;color:var(--muted)">CONNECTING TO LIVE DATA...</div>
+</div>
+<div id="app" style="display:none;flex-direction:column;min-height:100vh"></div>
+<div id="toast"></div>
+<div id="modal-root"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, onValue, update } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+// ═══════════════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════════════
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCAh30j7BUhxTfEvakHyQohP9fimujHxAE",
+  authDomain: "bc-warehouse-tracker.firebaseapp.com",
+  databaseURL: "https://bc-warehouse-tracker-default-rtdb.firebaseio.com",
+  projectId: "bc-warehouse-tracker",
+  storageBucket: "bc-warehouse-tracker.firebasestorage.app",
+  messagingSenderId: "182208662868",
+  appId: "1:182208662868:web:99be239b3654366c0d0cc1"
+};
+const MANAGER_PIN = "7150";
+
+// ═══════════════════════════════════════════════════════
+// ORDER DATA
+// ═══════════════════════════════════════════════════════
+const ORDER_DATA = [
+  {item:"02868",desc:"3/A SAND DOLLAR BOTTLE STOPS",qty:96,customer:"Beall's"},
+  {item:"20570",desc:"LG GOLD/BROWN FISH TRAY",qty:24,customer:"Beall's"},
+  {item:"20688",desc:"WOOD CONCH SHELL BOWL",qty:168,customer:"Beall's"},
+  {item:"20821",desc:"SAIL BOAT DRINK STIRS",qty:312,customer:"Beall's"},
+  {item:"20823",desc:"S/4 FLAMINGO WINE CHARMS",qty:288,customer:"Beall's"},
+  {item:"20848",desc:"S/2 FLAMINGO COFFEE CUPS",qty:336,customer:"Beall's"},
+  {item:"20865",desc:"SEA LA VIE S&P S/2",qty:224,customer:"Beall's"},
+  {item:"20936",desc:"FAITH PRAYER BOX",qty:168,customer:"Beall's"},
+  {item:"20937",desc:"LOVE PRAYER BOX",qty:168,customer:"Beall's"},
+  {item:"21020",desc:"PARADISE JEWELRY BOX",qty:328,customer:"Beall's"},
+  {item:"B21444",desc:"16.5in METAL ALLIGATOR WINE BOTTLE HOLDER",qty:12,customer:"Beall's"},
+  {item:"B22350",desc:"HAPPY MERMAID PAINTED WINE GLASS",qty:304,customer:"Beall's"},
+  {item:"B22352",desc:"BEACHSIDE PAINTED WINE GLASS",qty:304,customer:"Beall's"},
+  {item:"B22386",desc:"SHORE BIRD WELCOME WALL HANGING",qty:0,customer:"Beall's"},
+  {item:"B25161",desc:"MD TEXTURED BLUE BOX",qty:12,customer:"Beall's"},
+  {item:"21070",desc:"WORRY LESS PRAY MORE MUG W/SPOON",qty:72,customer:"Beall's"},
+  {item:"20826",desc:"FISHING VARIETY DRINK STIRS",qty:168,customer:"Beall's"},
+  {item:"B21226",desc:"SILICONE TROPICAL FLOWER WINE MARKER S/6",qty:144,customer:"Beall's"},
+  {item:"B21839",desc:"GLASS SEA YOU SOON STEMLESS GLASS",qty:400,customer:"Beall's"},
+  {item:"B21840",desc:"GLASS WINE KNOT STEMLESS GLASS",qty:304,customer:"Beall's"},
+  {item:"00662",desc:"LIFE SIGN W/BURLAP/SEA STAR",qty:324,customer:"SJL"},
+  {item:"00985",desc:"2/A FISH/CATCH 4X 6 FRAMES",qty:288,customer:"SJL"},
+  {item:"02253",desc:"JELLYFISH CANVAS W/5 LED",qty:504,customer:"SJL"},
+  {item:"02462",desc:"5X3.5 BEACH CHAIR TRIPLE FRAME",qty:312,customer:"SJL"},
+  {item:"02524",desc:"RAINBOW PLAQUE W/ROPE ACCENT",qty:480,customer:"SJL"},
+  {item:"02559",desc:"BEACH/SOUL PLAQUE W/STAR",qty:288,customer:"SJL"},
+  {item:"03130",desc:"LIFE IS GOOD RECT. PLAQUE",qty:1008,customer:"SJL"},
+  {item:"03617",desc:"2/A BOTTLES W/SHELL TOPS",qty:1548,customer:"SJL"},
+  {item:"03651",desc:"2/A SAND DOLLAR/SHELL MUGS",qty:528,customer:"SJL"},
+  {item:"03866",desc:"2/A OPEN BOTTLES W/SHELL DROP",qty:2544,customer:"SJL"},
+  {item:"04092",desc:"LAKE RULES PAINTED WALL ART",qty:420,customer:"SJL"},
+  {item:"04284",desc:"4/A LG SILVER TEA LIGHT HOLDER",qty:416,customer:"SJL"},
+  {item:"04285",desc:"4/A MD SILVER TEA LIGHT HOLDER",qty:1104,customer:"SJL"},
+  {item:"04286",desc:"4/A SM SILVER TEA LIGHT HOLDER",qty:912,customer:"SJL"},
+  {item:"04301",desc:"LED CANVAS XMAS GATE",qty:696,customer:"SJL"},
+  {item:"04480",desc:"WOOD PLAQUE W/METAL DOLPHIN",qty:324,customer:"SJL"},
+  {item:"04481",desc:"CUT OUT WOOD PLAQUE W/CLAM",qty:168,customer:"SJL"},
+  {item:"04487",desc:"PLAQUE W/2 METAL DOLPHINS",qty:120,customer:"SJL"},
+  {item:"04534",desc:"HOME IS BEACH BOX",qty:312,customer:"SJL"},
+  {item:"04558",desc:"PALM TREE CUT OUT PLAQUE",qty:384,customer:"SJL"},
+  {item:"04559",desc:"HEART BELONGS TO BEACH SIGN",qty:576,customer:"SJL"},
+  {item:"04568",desc:"4X6 PATRIOTIC 3 PIECE FRAME",qty:240,customer:"SJL"},
+  {item:"04569",desc:"WOOD BOX W/RAISED ANCHOR",qty:480,customer:"SJL"},
+  {item:"04595",desc:"PLANK TO THE LAKE W/TIN CUT",qty:328,customer:"SJL"},
+  {item:"04596",desc:"LAKE RELAX WOODEN PLAQUE",qty:58,customer:"SJL"},
+  {item:"04614",desc:"LARGE BOX W/GOLD ANCHOR",qty:156,customer:"SJL"},
+  {item:"04697",desc:"WOOD 5X7 FRAME W/BURLAP",qty:264,customer:"SJL"},
+  {item:"04718",desc:"BLACKFIN TUNA 4X6 HORIZ. FRAME",qty:528,customer:"SJL"},
+  {item:"04747",desc:"SMALL CANDLE HOLDER W/ROPE",qty:416,customer:"SJL"},
+  {item:"20035",desc:"HAPPY PLACE CANVAS PLAQUE",qty:300,customer:"SJL"},
+  {item:"20092",desc:"FISHERMAN/BEST CATCH SIGN",qty:256,customer:"SJL"},
+  {item:"20382",desc:"WELCOME TO LAKE SIGN W/METAL",qty:612,customer:"SJL"},
+  {item:"20383",desc:"GOOD LIFE 4X6 FRAME",qty:576,customer:"SJL"},
+  {item:"20455",desc:"CERAMIC TURTLE TRIVET",qty:528,customer:"SJL"},
+  {item:"20460",desc:"CAPIZ BLUE PARROT WALL ART",qty:80,customer:"SJL"},
+  {item:"20484",desc:"GREEN TOUCAN 5X7 PHOTO FRAME",qty:744,customer:"SJL"},
+  {item:"20485",desc:"GREEN PARROT 5X7 PHOTO FRAME",qty:600,customer:"SJL"},
+  {item:"20497",desc:"SQUARE TURTLE PILLOW",qty:408,customer:"SJL"},
+  {item:"20500",desc:"BEACH HUT PILLOW",qty:690,customer:"SJL"},
+  {item:"20525",desc:"TEAL TURTLE TRAY",qty:232,customer:"SJL"},
+  {item:"20584",desc:"PINE WOOD WALL DECOR W/EGRET",qty:306,customer:"SJL"},
+  {item:"20585",desc:"PINE WOOD WALL DECOR W/BOAT",qty:366,customer:"SJL"},
+  {item:"20586",desc:"PINE WOOD WALL DECOR W/PALMS",qty:178,customer:"SJL"},
+  {item:"20596",desc:"WOOD BLESSINGS/LAKE SIGN",qty:448,customer:"SJL"},
+  {item:"20601",desc:"Wood Sailboat Sign",qty:300,customer:"SJL"},
+  {item:"20644",desc:"GREEN SHELL EMBRODIERY PILLOW",qty:432,customer:"SJL"},
+  {item:"20646",desc:"CORAL SHELL EMBRODIERY PILLOW",qty:288,customer:"SJL"},
+  {item:"20649",desc:"GRAY SHELL EMBRODIERY PILLOW",qty:240,customer:"SJL"},
+  {item:"20650",desc:"PINEAPPLE TRIO PILLOW",qty:156,customer:"SJL"},
+  {item:"20690",desc:"Capiz Blue/Teal Fish Mirror",qty:103,customer:"SJL"},
+  {item:"20772",desc:"WOOD 4X6 FRAME GRN & ORN",qty:456,customer:"SJL"},
+  {item:"20801",desc:"ANCHOR STRIPE BEACH TOWEL YEL",qty:408,customer:"SJL"},
+  {item:"20818",desc:"FISH & CHIPS PLATTER",qty:300,customer:"SJL"},
+  {item:"20839",desc:"CITRUS BOTTLE OPENER",qty:672,customer:"SJL"},
+  {item:"20853",desc:"S/4 FISH SPREADERS",qty:264,customer:"SJL"},
+  {item:"20871",desc:"SEA LA VIE BOAT DISH",qty:204,customer:"SJL"},
+  {item:"20886",desc:"CITRUS SERVING TRAY",qty:252,customer:"SJL"},
+  {item:"20887",desc:"S/2 FLAMINGO VOTIVE",qty:132,customer:"SJL"},
+  {item:"20912",desc:"S/2 PINK OMBRE GLASS VOTIVE",qty:528,customer:"SJL"},
+  {item:"20915",desc:"SEA LA VIE RECIPE BOX",qty:480,customer:"SJL"},
+  {item:"20917",desc:"ACT LIKE A LADY 10in PILLOW S/2",qty:240,customer:"SJL"},
+  {item:"20922",desc:"PARADISE 14in PILLOW",qty:240,customer:"SJL"},
+  {item:"20934",desc:"LOVE SHELL FLOWER PLAQUE",qty:288,customer:"SJL"},
+  {item:"20952",desc:"LEMON SHAPED SCENTED CANDLE",qty:1152,customer:"SJL"},
+  {item:"20953",desc:"ORANGE SHAPED SCENTED CANDLE",qty:960,customer:"SJL"},
+  {item:"20966",desc:"LOVE ANCHOR 4X6 FRAME",qty:264,customer:"SJL"},
+  {item:"21006",desc:"SEA LA VIE BLUE 6X7 FRAME",qty:896,customer:"SJL"},
+  {item:"21012",desc:"I LAY ME DOWN 60X40 BLANKET",qty:297,customer:"SJL"},
+  {item:"21014",desc:"DO NOT DISTURB 60X40 BLANKET",qty:351,customer:"SJL"},
+  {item:"21016",desc:"NO WAKE ZONE 60X40 BLANKET",qty:216,customer:"SJL"},
+  {item:"21039",desc:"BLESS THIS MESS SHELL PLAQUE",qty:432,customer:"SJL"},
+  {item:"21040",desc:"WORRY LESS SHELL PLAQUE",qty:408,customer:"SJL"},
+  {item:"21043",desc:"BLESS THIS HOME SHELL PLAQUE",qty:432,customer:"SJL"},
+  {item:"21060",desc:"DRINK LIKE A FISH DECANTER",qty:348,customer:"SJL"},
+  {item:"21075",desc:"LOBSTER MASON JAR",qty:288,customer:"SJL"},
+  {item:"B21155",desc:"27.5in DREAMCATCHER BOAT DARK BLUE",qty:1008,customer:"SJL"},
+  {item:"B21211",desc:"10.25in RESIN AHOY CAPTAIN FIGURE",qty:522,customer:"SJL"},
+  {item:"B21212",desc:"9.75in RESIN TRAVELING CAPTAIN FIGURE",qty:732,customer:"SJL"},
+  {item:"B21254",desc:"15in MDF DEEP SEA DRINKING WALL SIGN",qty:504,customer:"SJL"},
+  {item:"B21256",desc:"15in MDF THE STRUGGLE IS REEL SIGN",qty:528,customer:"SJL"},
+  {item:"B21257",desc:"15in MDF FISH TREMBLE AT MY NAME SIGN",qty:720,customer:"SJL"},
+  {item:"B21337",desc:"12in FIGHTING FISH WOOD FIGURE",qty:296,customer:"SJL"},
+  {item:"B21345",desc:"6.15in GLS BTL W/ GREEN SAND SEA STAR",qty:696,customer:"SJL"},
+  {item:"B21346",desc:"6.15in GLS BTL W/ PINK SAND & SEA STAR",qty:960,customer:"SJL"},
+  {item:"B21347",desc:"6.15in GLS BTL W/ AQUA SAND & WHEEL",qty:480,customer:"SJL"},
+  {item:"B21424",desc:"14in METAL DUSK LIGHTHOUSE SIGN",qty:600,customer:"SJL"},
+  {item:"B21427",desc:"6.5in MDF PINEAPPLE OF MY EYE BOTTLE OPENER",qty:1020,customer:"SJL"},
+  {item:"B21428",desc:"7.4in MDF ANCHOR SEAGULL PRINT BOTTLE OPENER",qty:720,customer:"SJL"},
+  {item:"B21429",desc:"6.9in MDF BEACH SCENE GUITAR BOTTLE OPENER",qty:840,customer:"SJL"},
+  {item:"B21430",desc:"6.7in MDF FISH SHAPED BEACH BOTTLE OPENER",qty:480,customer:"SJL"},
+  {item:"B21431",desc:"5.5in MDF PALM SALTY KISS BOTTLE OPENER",qty:1440,customer:"SJL"},
+  {item:"B21447",desc:"7in CERAMIC RED LOVE BUD VASE",qty:528,customer:"SJL"},
+  {item:"B21448",desc:"5.25in CERAMIC BLUE ANCHOR BUD VASE",qty:264,customer:"SJL"},
+  {item:"B21450",desc:"3in GLASS ANCHOR VOTIVE BLUE",qty:324,customer:"SJL"},
+  {item:"B21535",desc:"22.4in MDF GREEN ITS SUMMER SIGN",qty:192,customer:"SJL"},
+  {item:"B21650",desc:"14in MDF COASTAL CAFE PRINTED WALL DECOR",qty:248,customer:"SJL"},
+  {item:"B21651",desc:"14in MDF SHORESIDE PORCH PRINTED WALL DECOR",qty:336,customer:"SJL"},
+  {item:"B21654",desc:"14in WOOD/GLASS YELLOW TROPICAL FISH",qty:464,customer:"SJL"},
+  {item:"B21655",desc:"14in WOOD/GLASS WHITE TROPICAL FISH",qty:504,customer:"SJL"},
+  {item:"B21659",desc:"14X14in COTTON FAITH PILLOW",qty:672,customer:"SJL"},
+  {item:"B21660",desc:"14X8in COTTON BLESS THIS HOT MESS PILLOW",qty:672,customer:"SJL"},
+  {item:"B21805",desc:"MDF OCEAN RULES BLOCK FRAME",qty:196,customer:"SJL"},
+  {item:"B21824",desc:"9.45in WOOD INDIGO IKAT PRINTED FRAME",qty:696,customer:"SJL"},
+  {item:"B21839",desc:"GLASS SEA YOU SOON STEMLESS GLASS",qty:864,customer:"SJL"},
+  {item:"B21840",desc:"GLASS WINE KNOT STEMLESS GLASS",qty:640,customer:"SJL"},
+  {item:"B21872",desc:"19.5in WOOD SANTA SEA SUNS GREETINGS SIGN",qty:144,customer:"SJL"},
+  {item:"B21877",desc:"15in WOOD HOLIDAY CAMPER FIGURE",qty:210,customer:"SJL"},
+  {item:"B21878",desc:"12in WOOD RED/WHT HOLIDAY SAILBOAT FIGURE",qty:100,customer:"SJL"},
+  {item:"B21907",desc:"7.4in CAPIZ TRAY SEAS & GREETINGS DESIGN",qty:168,customer:"SJL"},
+  {item:"B21916",desc:"10X10in COTTON MERMAID PRINT PILLOW",qty:588,customer:"SJL"},
+  {item:"B21918",desc:"16X16in COTTON MERMAID TO BEACH PILLOW",qty:312,customer:"SJL"},
+  {item:"B21927",desc:"12X12in COTTON SHORE OF YOURSELF PILLOW",qty:288,customer:"SJL"},
+  {item:"B21928",desc:"22X12in COTTON OCEAN WAVES PILLOW",qty:210,customer:"SJL"},
+  {item:"B21935",desc:"8in GLASS ROSEGOLD FISH DECORATIVE BOTTLE",qty:588,customer:"SJL"},
+  {item:"B21936",desc:"8in GLASS GUNMETAL FISH DECORATIVE BOTTLE",qty:288,customer:"SJL"},
+  {item:"B21937",desc:"6in GLASS FISH CANDLE HOLDER NATURAL",qty:96,customer:"SJL"},
+  {item:"B21950",desc:"11.5in GLASS TURQ. METALLIC BOTTLE VASE",qty:222,customer:"SJL"},
+  {item:"B21957",desc:"60X55in COTTON SEAS & GREETINGS BLANKET",qty:180,customer:"SJL"},
+  {item:"B21985",desc:"19.5in MERMAID KISSES CHALKBOARD",qty:160,customer:"SJL"},
+  {item:"B21986",desc:"11.8in WOOD MERMAID / BEST FRIEND PLAQUE",qty:816,customer:"SJL"},
+  {item:"B22034",desc:"15.75in WOOD NIGHTTIME CAMPSITE PLAQUE",qty:328,customer:"SJL"},
+  {item:"B22042",desc:"14in WOOD RIVER RAPIDS HANGING SIGN",qty:928,customer:"SJL"},
+  {item:"B22044",desc:"12in WOOD BEER THIRTY WINE O CLOCK PLAQUE",qty:384,customer:"SJL"},
+  {item:"B22057",desc:"5X7in WOOD FISH / SHELL FRAME",qty:400,customer:"SJL"},
+  {item:"B22132",desc:"RECLAIMED WOOD METAL HELLO SUNSHINE PLQ",qty:408,customer:"SJL"},
+  {item:"B22150",desc:"WOOD / SHELL LOVE WALL PLAQUE",qty:120,customer:"SJL"},
+  {item:"B22151",desc:"ROPE /SHELL HANGING PLANTER",qty:468,customer:"SJL"},
+  {item:"B22152",desc:"ROPE HANGING PLANTER W/SHELL DANGLES",qty:252,customer:"SJL"},
+  {item:"B22176",desc:"WOOD MOSAIC 4X4 PICTURE FRAME",qty:384,customer:"SJL"},
+  {item:"B22179",desc:"WOOD SEA SUN WAVE WALL PLAQUE",qty:360,customer:"SJL"},
+  {item:"B22180",desc:"WOOD RIDE THE WAVE WALL PLAQUE",qty:342,customer:"SJL"},
+  {item:"B22343",desc:"BLUE FLOATING TEALIGHT W/SAND & SHELLS",qty:132,customer:"SJL"},
+  {item:"B22372",desc:"PINEAPPLE BOTTLE OPENER PLAQUE",qty:264,customer:"SJL"},
+  {item:"B22396",desc:"S/3 CAMP STACKABLE ACCENTS",qty:720,customer:"SJL"},
+  {item:"B22397",desc:"S/3 BY THE SEA STACKABLE ACCENTS",qty:624,customer:"SJL"},
+  {item:"B22404",desc:"HAPPY HOUR BOTTLE OPENER",qty:336,customer:"SJL"},
+  {item:"B22405",desc:"FREE BEER FOOTPRINT BOTTLE OPENER",qty:696,customer:"SJL"},
+  {item:"B22442",desc:"4X6 PEEK A BOO JANET PICTURE FRAME",qty:816,customer:"SJL"},
+  {item:"B22443",desc:"4X6 JANET ON THE BEACH PICTURE FRAME",qty:456,customer:"SJL"},
+  {item:"B22452",desc:"RESIN OAR/ ROPE PICTURE FRAME",qty:360,customer:"SJL"},
+  {item:"B22505",desc:"VOICE OF THE SEA WALL PLAQUE",qty:624,customer:"SJL"},
+  {item:"B22506",desc:"QUIET MOMENTS WALL PLAQUE",qty:736,customer:"SJL"},
+  {item:"B22510",desc:"RUSTIC LOBSTER ON THE ROUND WALL PLAQUE",qty:688,customer:"SJL"},
+  {item:"B22511",desc:"RUSTIC CRAB ON THE ROUND WALL PLAQUE",qty:720,customer:"SJL"},
+  {item:"B22513",desc:"METAL WHALE TAIL WALL HANGING",qty:384,customer:"SJL"},
+  {item:"B22518",desc:"DREAMY SHELL WOOD BLOCK",qty:450,customer:"SJL"},
+  {item:"B22554",desc:"ON BEACH TIME PICTURE HOLDER PLAQUE",qty:644,customer:"SJL"},
+  {item:"B22566",desc:"ALWAYS BEAUTIFUL SHORE METAL SIGN",qty:390,customer:"SJL"},
+  {item:"B22668",desc:"HELLO SUMMER PLACEMAT/ COASTER SET",qty:96,customer:"SJL"},
+  {item:"B22669",desc:"FLAMINGO PALMS PLACEMAT/ COASTER S/2",qty:576,customer:"SJL"},
+  {item:"B22670",desc:"PRETTY PINEAPPLES PLACEMAT/ COASTER SET",qty:624,customer:"SJL"},
+  {item:"B22674",desc:"FLAMINGO BAMBOO CONTAINER",qty:576,customer:"SJL"},
+  {item:"B22687",desc:"FLORIDA SIGN MINI WALL HANGING",qty:192,customer:"SJL"},
+  {item:"B22688",desc:"CAROLINAS SIGN MINI WALL HANGING",qty:672,customer:"SJL"},
+  {item:"B22689",desc:"NORTHEAST BEACH SIGN MINI WALL HANGING",qty:864,customer:"SJL"},
+  {item:"B22733",desc:"GONE SURFING WALL PLAQUE",qty:720,customer:"SJL"},
+  {item:"B22736",desc:"RELAX ON ISLAND TIME WALL PLAQUE",qty:640,customer:"SJL"},
+  {item:"B22743",desc:"LAKESIDE REFLECTION WALL PLAQUE",qty:368,customer:"SJL"},
+  {item:"B23765",desc:"BEACH & SHELLS FRAME",qty:336,customer:"SJL"},
+  {item:"B24858",desc:"BIMINI ISLAND BIRDHOUSE",qty:232,customer:"SJL"},
+  {item:"B24916",desc:"NARROW BLUE SHELL CANDLE HOLDER",qty:504,customer:"SJL"},
+  {item:"B25147",desc:"GLASS VOTIVES A/4",qty:192,customer:"SJL"},
+  {item:"B25935",desc:"CRAB WAVE MELAMINE PLATTER",qty:264,customer:"SJL"}
+];
+
+// Build lookup: item -> [{customer, qty, desc}]
+const ORDER_LOOKUP = {};
+for (const row of ORDER_DATA) {
+  const k = row.item.toUpperCase();
+  if (!ORDER_LOOKUP[k]) ORDER_LOOKUP[k] = [];
+  ORDER_LOOKUP[k].push(row);
+}
+
+// ═══════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════
+let db;
+let workerName = "";
+let tab = "pick";           // pick | manager
+let subTab = "orders";      // orders | pallets | activity
+let managerUnlocked = false;
+let liveData = { picks: {}, pallets: {}, log: [] };
+let pendingScan = null;       // product waiting for pallet confirmation
+let palletLock = null;        // pallet ID scanned before product
+let palletChoice = null;      // null | 'join' | 'new'
+let saving = false;
+let sortCol = "item", sortAsc = true;
+let filterKey = "all";
+let searchStr = "";
+let lastResultHtml = "";
+
+// ═══════════════════════════════════════════════════════
+// BOOT
+// ═══════════════════════════════════════════════════════
+function boot() {
+  try {
+    const app = initializeApp(FIREBASE_CONFIG);
+    db = getDatabase(app);
+    let firstConnect = true;
+
+    onValue(ref(db, "tracker"), snap => {
+      const d = snap.val() || {};
+      liveData.picks   = d.picks   || {};
+      liveData.pallets = d.pallets || {};
+      liveData.log     = d.log ? Object.values(d.log).sort((a,b) => b.ts - a.ts) : [];
+
+      if (firstConnect) {
+        firstConnect = false;
+        document.getElementById("loading").style.display = "none";
+        document.getElementById("app").style.display = "flex";
+        const saved = localStorage.getItem("bc_worker_name");
+        if (saved) { workerName = saved; renderShell(); renderView(); }
+        else showNameScreen();
+      } else {
+        syncHeader();
+        if (document.getElementById("main-content")) renderView();
+      }
+    });
+  } catch(e) {
+    document.getElementById("loading").innerHTML =
+      '<div style="color:var(--red);font-family:var(--font);text-align:center;padding:40px">' +
+      '<div style="font-size:2rem;margin-bottom:12px">⚠</div>' +
+      '<div>Firebase connection failed.<br>Check config.</div></div>';
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// NAME SCREEN
+// ═══════════════════════════════════════════════════════
+function showNameScreen() {
+  document.getElementById("app").innerHTML =
+    '<div id="name-screen">' +
+      '<div class="name-card pop">' +
+        '<h1>BC PICKER</h1>' +
+        '<p>Warehouse clearout tracker</p>' +
+        '<input id="name-inp" class="inp inp-md w100" placeholder="Your name (e.g. Mike)" style="margin-bottom:12px" autofocus>' +
+        '<button class="btn btn-accent w100" id="name-btn">START PICKING</button>' +
+      '</div>' +
+    '</div>';
+  document.getElementById("name-btn").onclick = submitName;
+  document.getElementById("name-inp").onkeydown = e => { if (e.key === "Enter") submitName(); };
+}
+
+function submitName() {
+  const v = (document.getElementById("name-inp")?.value || "").trim();
+  if (!v) return;
+  workerName = v;
+  localStorage.setItem("bc_worker_name", v);
+  renderShell();
+  renderView();
+}
+
+// ═══════════════════════════════════════════════════════
+// SHELL
+// ═══════════════════════════════════════════════════════
+function renderShell() {
+  document.getElementById("app").innerHTML =
+    '<header>' +
+      '<div>' +
+        '<div class="h-title">BC WAREHOUSE TRACKER</div>' +
+        '<div class="h-sub">' +
+          '<span class="live-dot pulse"></span>' +
+          '<span>LIVE</span>' +
+          '<span style="color:var(--border)">·</span>' +
+          '<span id="hdr-name">' + esc(workerName) + '</span>' +
+          '<span id="hdr-sync" style="color:var(--border)"></span>' +
+        '</div>' +
+      '</div>' +
+      '<nav class="tab-nav">' +
+        '<button class="btn-tab active" id="tab-pick">📦 PICK</button>' +
+        '<button class="btn-tab" id="tab-mgr">📊 MANAGER</button>' +
+        '<button class="btn-tab" id="tab-logout">⏏ LOGOUT</button>' +
+      '</nav>' +
+    '</header>' +
+    '<div id="main-content" style="flex:1;overflow-y:auto"></div>';
+
+  document.getElementById("tab-pick").onclick    = () => setTab("pick");
+  document.getElementById("tab-mgr").onclick     = () => setTab("manager");
+  document.getElementById("tab-logout").onclick  = logout;
+}
+
+function syncHeader() {
+  const el = document.getElementById("hdr-sync");
+  if (el) el.textContent = "· " + new Date().toLocaleTimeString();
+}
+
+function setTab(t) {
+  if (t === "manager" && !managerUnlocked) { showPinModal(); return; }
+  tab = t;
+  document.getElementById("tab-pick")?.classList.toggle("active", t === "pick");
+  document.getElementById("tab-mgr")?.classList.toggle("active", t === "manager");
+  renderView();
+}
+
+function renderView() {
+  if (tab === "pick") renderPick();
+  else renderManager();
+}
+
+function logout() {
+  localStorage.removeItem("bc_worker_name");
+  workerName = ""; managerUnlocked = false; pendingScan = null; palletLock = null; palletChoice = null;
+  document.getElementById("app").innerHTML = "";
+  showNameScreen();
+}
+
+// ═══════════════════════════════════════════════════════
+// PIN MODAL
+// ═══════════════════════════════════════════════════════
+function showPinModal() {
+  const div = document.createElement("div");
+  div.className = "overlay";
+  div.id = "pin-overlay";
+  div.innerHTML =
+    '<div class="modal pop" style="text-align:center">' +
+      '<div style="font-family:var(--font);font-size:2rem;font-weight:900;color:var(--accent);margin-bottom:8px">MANAGER ACCESS</div>' +
+      '<div style="color:var(--muted);font-size:.85rem;margin-bottom:20px">Enter PIN to continue</div>' +
+      '<input id="pin-inp" type="password" inputmode="numeric" maxlength="8" class="inp inp-md w100" placeholder="PIN" style="text-align:center;letter-spacing:.3em;margin-bottom:8px">' +
+      '<div id="pin-err" style="color:var(--red);font-size:.82rem;min-height:18px;margin-bottom:14px"></div>' +
+      '<div class="flex gap10">' +
+        '<button class="btn btn-accent" style="flex:1" id="pin-ok">UNLOCK</button>' +
+        '<button class="btn btn-outline" style="flex:1" id="pin-cancel">CANCEL</button>' +
+      '</div>' +
+    '</div>';
+  document.getElementById("modal-root").appendChild(div);
+  const inp = document.getElementById("pin-inp");
+  setTimeout(() => inp?.focus(), 80);
+  document.getElementById("pin-ok").onclick = checkPin;
+  document.getElementById("pin-cancel").onclick = closeModal;
+  inp.onkeydown = e => { if (e.key === "Enter") checkPin(); };
+  div.onclick = e => { if (e.target === div) closeModal(); };
+}
+
+function checkPin() {
+  const v = (document.getElementById("pin-inp")?.value || "").trim();
+  if (v === MANAGER_PIN) {
+    managerUnlocked = true;
+    closeModal();
+    tab = "manager";
+    document.getElementById("tab-pick")?.classList.remove("active");
+    document.getElementById("tab-mgr")?.classList.add("active");
+    renderManager();
+  } else {
+    const err = document.getElementById("pin-err");
+    if (err) err.textContent = "Incorrect PIN — try again";
+    const inp = document.getElementById("pin-inp");
+    if (inp) { inp.value = ""; inp.style.borderColor = "var(--red)"; inp.focus(); }
+  }
+}
+
+function closeModal() {
+  document.getElementById("modal-root").innerHTML = "";
+}
+
+// ═══════════════════════════════════════════════════════
+// PICK VIEW
+// ═══════════════════════════════════════════════════════
+function renderPick() {
+  const mc = document.getElementById("main-content");
+  if (!mc) return;
+  const myScans = liveData.log.filter(s => s.worker === workerName).slice(0, 10);
+
+  let html = '<div class="main narrow">';
+
+  // Sticky scan bar
+  html += '<div class="scan-bar">';
+  // Pallet lock banner
+  if (palletLock) {
+    html += '<div class="pallet-lock">' +
+      '<span style="font-size:1.1rem">🪟</span>' +
+      '<span style="font-family:var(--font);font-weight:800;color:var(--accent)">' + esc(palletLock) + '</span>' +
+      '<span style="color:var(--muted)">locked — scan a product to add to this pallet</span>' +
+      '<button id="clear-lock-btn" style="margin-left:auto;background:none;border:none;color:var(--muted);font-size:1.2rem;cursor:pointer;line-height:1">✕</button>' +
+      '</div>';
+  }
+  html += '<div class="section-lbl">Enter product or pallet barcode</div>';
+  html += '<div class="flex gap10">';
+  html += '<input id="scan-inp" class="inp inp-lg w100" placeholder="' +
+    (pendingScan ? 'Confirm pallet first...' : 'e.g. B21839 or CF00001') + '"' +
+    (pendingScan ? ' disabled' : ' autofocus') + '>';
+  html += '<button class="btn btn-accent" id="scan-btn"' + (pendingScan ? ' disabled' : '') + '>ENTER</button>';
+  html += '</div></div>'; // end scan-bar
+
+  // Pending confirm card
+  if (pendingScan) html += buildConfirmCard();
+
+  // Last result
+  if (!pendingScan && lastResultHtml) {
+    html += '<div id="last-result" class="slide-up">' + lastResultHtml + '</div>';
+  }
+
+  // Recent scans
+  html += '<div class="card">';
+  html += '<div style="padding:12px 16px;border-bottom:1px solid var(--border)">';
+  html += '<div class="section-lbl" style="margin:0">My recent entries</div>';
+  html += '</div>';
+  if (!myScans.length) {
+    html += '<div class="empty">No entries yet — start scanning!</div>';
+  } else {
+    for (const s of myScans) {
+      const isBg = s.type === "b715";
+      html += '<div class="feed-row">' +
+        '<span style="font-size:.7rem;color:var(--muted);min-width:64px">' + new Date(s.ts).toLocaleTimeString() + '</span>' +
+        '<span style="font-family:var(--font);font-weight:700;color:var(--accent);min-width:70px">' + esc(s.item) + '</span>' +
+        '<span style="font-family:var(--font);font-weight:700;min-width:32px">×' + (s.qty || 1) + '</span>' +
+        '<span class="hide-sm" style="flex:1;font-size:.78rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(s.desc || "") + '</span>' +
+        '<span class="badge ' + (isBg ? "b-purple" : "b-green") + '">' + (isBg ? "→ 715" : "→ " + esc(s.customer || "")) + '</span>' +
+        '<span class="badge b-amber">🪟 ' + esc(s.pallet || "") + '</span>' +
+        '</div>';
+    }
+  }
+  html += '</div>'; // end card
+  html += '</div>'; // end main
+
+  mc.innerHTML = html;
+
+  // Attach events (no inline onclick)
+  const scanBtn = document.getElementById("scan-btn");
+  const scanInp = document.getElementById("scan-inp");
+  if (scanBtn) scanBtn.onclick = doScan;
+  if (scanInp) scanInp.onkeydown = e => { if (e.key === "Enter") doScan(); };
+  if (!pendingScan && scanInp) setTimeout(() => scanInp.focus(), 50);
+
+  const clearBtn = document.getElementById("clear-lock-btn");
+  if (clearBtn) clearBtn.onclick = () => { palletLock = null; renderPick(); };
+
+  // Quick-pallet buttons
+  document.querySelectorAll(".quick-pallet-btn").forEach(btn => {
+    btn.onclick = () => {
+      const palInp = document.getElementById("pallet-inp");
+      if (palInp) {
+        palInp.value = btn.dataset.pid;
+        // Highlight selected button
+        document.querySelectorAll(".quick-pallet-btn").forEach(b => {
+          b.style.background = "var(--surface)";
+          b.style.color = "var(--text)";
+          b.style.borderColor = "var(--border)";
+          b.querySelector("span").style.color = "var(--muted)";
+        });
+        btn.style.background = "var(--accent)";
+        btn.style.color = "#000";
+        btn.style.borderColor = "var(--accent)";
+        btn.querySelector("span").style.color = "#000";
+        document.getElementById("qty-inp")?.focus();
+      }
+    };
+  });
+
+  if (pendingScan) {
+    // Cancel (always present)
+    const cancelBtn = document.getElementById("cancel-btn");
+    if (cancelBtn) cancelBtn.onclick = () => {
+      pendingScan = null; palletLock = null; palletChoice = null; renderPick();
+    };
+
+    // Back → returns to join/new choice
+    const backBtn = document.getElementById("back-btn");
+    if (backBtn) backBtn.onclick = () => { palletChoice = null; renderPick(); };
+
+    // Step 1: Join or New
+    const btnJoin = document.getElementById("btn-join-pallet");
+    const btnNew  = document.getElementById("btn-new-pallet");
+    if (btnJoin) btnJoin.onclick = () => { palletChoice = "join"; renderPick(); };
+    if (btnNew)  btnNew.onclick  = () => { palletChoice = "new";  renderPick(); };
+
+    // Step 2 Join: camera scan button opens camera
+    const camBtn = document.getElementById("cam-scan-btn");
+    if (camBtn) {
+      camBtn.onclick = () => {
+        scanWithCamera(val => {
+          const pi = document.getElementById("pallet-inp");
+          if (pi) { pi.value = val; pi.style.borderColor = "var(--blue)"; }
+          showToast("🪟 " + val + " scanned — set qty and confirm", "var(--blue)");
+          document.getElementById("qty-inp")?.focus();
+        });
+      };
+      // Auto-trigger camera immediately when join screen appears
+      if (palletChoice === "join") setTimeout(() => camBtn.click(), 200);
+    }
+
+    // Step 2: pallet/qty field events
+    const palInp = document.getElementById("pallet-inp");
+    const qtyInp = document.getElementById("qty-inp");
+    if (palInp) {
+      palInp.onkeydown = e => { if (e.key === "Enter") qtyInp?.focus(); };
+      palInp.onfocus = function() { this.select(); };
+      if (palletChoice === "new") setTimeout(() => palInp.focus(), 80);
+    }
+    if (qtyInp) {
+      qtyInp.onkeydown = e => { if (e.key === "Enter") doConfirm(); };
+      qtyInp.onfocus = function() { this.select(); };
+    }
+
+    // Confirm
+    const confBtn = document.getElementById("confirm-btn");
+    if (confBtn) confBtn.onclick = doConfirm;
+  }
+}
+
+function buildConfirmCard() {
+  const p = pendingScan;
+  const is715 = (p.type === "b715" || p.type === "notfound");
+  const cardClass = is715 ? "result-715" : "result-order";
+  const destColor = is715 ? "var(--purple)" : "var(--green)";
+  const destText  = is715 ? "→ BUILDING 715" : "→ ORDER: " + esc(p.destCustomer || "");
+
+  let html = '<div class="' + cardClass + ' pop mb16">';
+
+  // Product info
+  html += '<div class="result-dest" style="color:' + destColor + '">' + destText + '</div>';
+  html += '<div style="margin-top:4px"><strong style="color:var(--accent)">' + esc(p.code) + '</strong>';
+  if (p.desc) html += ' — ' + esc(p.desc);
+  html += '</div>';
+
+  // Order status badges
+  if (!is715 && p.code) {
+    const statuses = orderStatus(p.code);
+    if (statuses.length) {
+      html += '<div class="flex gap8 wrap" style="margin-top:10px">';
+      for (const s of statuses) {
+        const cls = s.customer === "Beall's" ? "b-bealls" : "b-sjl";
+        const lbl = s.remaining <= 0 ? "✓ DONE" : s.remaining + " left";
+        html += '<span class="badge ' + cls + '">' + esc(s.customer) + ': ' + lbl + '</span>';
+      }
+      html += '</div>';
+    }
+  }
+
+  // ── Step 2: Join or New choice ───────────────────────────────────────────
+  if (!palletChoice) {
+    // Show the two big choice buttons
+    html += '<div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">';
+    html += '<button id="btn-join-pallet" class="btn" style="background:var(--blue);color:#fff;font-size:1.1rem;height:54px;border-radius:10px;width:100%">🔗 JOIN existing pallet tag</button>';
+    html += '<button id="btn-new-pallet"  class="btn" style="background:var(--green);color:#000;font-size:1.1rem;height:54px;border-radius:10px;width:100%">➕ CREATE new pallet tag</button>';
+    html += '<button id="cancel-btn" class="btn btn-outline" style="height:40px;font-size:.9rem">✕ Cancel</button>';
+    html += '</div>';
+  } else if (palletChoice === "join") {
+    // Show camera scan prompt to scan existing pallet tag
+    html += '<div style="margin-top:16px;background:var(--surface);border:2px solid var(--blue);border-radius:10px;padding:16px">';
+    html += '<div style="font-family:var(--font);font-size:1.1rem;font-weight:800;color:var(--blue);margin-bottom:12px">🔗 SCAN PALLET TAG TO JOIN</div>';
+    html += '<button id="cam-scan-btn" style="width:100%;background:var(--blue);color:#fff;border:none;border-radius:10px;padding:16px;font-family:var(--font);font-size:1.3rem;font-weight:800;cursor:pointer;margin-bottom:12px">📷 SCAN PALLET TAG</button>';
+    html += '<div style="text-align:center;color:var(--muted);font-size:.78rem;margin-bottom:10px">— or type pallet # manually —</div>';
+    html += '<input id="pallet-inp" class="inp inp-md w100" placeholder="e.g. CF00003" style="font-family:var(--font);font-weight:800;letter-spacing:.06em;margin-bottom:12px">';
+    html += '<div style="display:flex;gap:10px">';
+    html += '<button id="confirm-btn" class="btn ' + (is715 ? "btn-purple" : "btn-green") + '" style="flex:1">CONFIRM ✓</button>';
+    html += '<button id="back-btn" class="btn btn-outline" style="padding:0 14px">← Back</button>';
+    html += '</div>';
+    html += '</div>';
+  } else {
+    // palletChoice === "new" — show auto-number + qty
+    const suggested = nextPalletNum();
+    html += '<div style="margin-top:16px;background:var(--surface);border:2px solid var(--green);border-radius:10px;padding:16px">';
+    html += '<div style="font-family:var(--font);font-size:1.1rem;font-weight:800;color:var(--green);margin-bottom:12px">➕ NEW PALLET TAG</div>';
+    html += '<div style="font-size:.72rem;color:var(--muted);font-weight:700;letter-spacing:.08em;margin-bottom:6px">PALLET #</div>';
+    html += '<input id="pallet-inp" class="inp inp-md w100" value="' + esc(suggested) + '" style="font-family:var(--font);font-weight:800;letter-spacing:.06em;margin-bottom:12px">';
+    html += '<div style="display:flex;gap:10px">';
+    html += '<div style="flex:1">';
+    html += '<div style="font-size:.72rem;color:var(--muted);font-weight:700;letter-spacing:.08em;margin-bottom:6px">QTY</div>';
+    html += '<input id="qty-inp" class="inp inp-md w100" type="number" min="1" max="9999" value="1" style="text-align:center">';
+    html += '</div>';
+    html += '<div style="display:flex;gap:8px;align-self:flex-end">';
+    html += '<button id="confirm-btn" class="btn ' + (is715 ? "btn-purple" : "btn-green") + '">CONFIRM ✓</button>';
+    html += '<button id="back-btn" class="btn btn-outline" style="padding:0 14px">← Back</button>';
+    html += '</div>';
+    html += '</div>';
+    html += '</div>';
+  }
+
+  // Qty row for join flow (after pallet is chosen)
+  if (palletChoice === "join") {
+    html += '<div style="display:flex;gap:10px;margin-top:10px;align-items:flex-end">';
+    html += '<div style="flex:1"><div style="font-size:.72rem;color:var(--muted);font-weight:700;letter-spacing:.08em;margin-bottom:6px">QTY</div>';
+    html += '<input id="qty-inp" class="inp inp-md w100" type="number" min="1" max="9999" value="1" style="text-align:center"></div>';
+    html += '</div>';
+  }
+
+  html += '</div>'; // outer card
+  return html;
+}
+
+
+function nextPalletNum() {
+  const nums = Object.keys(liveData.pallets)
+    .filter(p => /^CF\d{5}$/.test(p))
+    .map(p => parseInt(p.slice(2)));
+  const n = nums.length ? Math.max(...nums) + 1 : 1;
+  return "CF" + String(n).padStart(5, "0");
+}
+
+
+function scanWithCamera(onResult) {
+  // Use BarcodeDetector API if available (Chrome Android, Safari 17+)
+  // Fallback: open file input with capture="environment" which triggers camera on mobile
+  if (typeof BarcodeDetector !== "undefined") {
+    BarcodeDetector.getSupportedFormats().then(() => {
+      const detector = new BarcodeDetector({ formats: ["code_128", "qr_code", "code_39", "ean_13"] });
+      // Create a hidden video element to stream camera
+      const overlay = document.createElement("div");
+      overlay.id = "cam-overlay";
+      overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px";
+      overlay.innerHTML =
+        "<div style='color:var(--accent);font-family:var(--font);font-size:1.4rem;font-weight:900;letter-spacing:.06em'>SCAN PALLET BARCODE</div>" +
+        "<video id='cam-video' style='width:min(340px,90vw);border-radius:10px;border:3px solid var(--accent)' autoplay playsinline muted></video>" +
+        "<div style='color:var(--muted);font-size:.85rem'>Point camera at the barcode on the pallet tag</div>" +
+        "<button onclick='window._stopCamScan()' style='background:var(--red);color:#fff;border:none;border-radius:8px;padding:10px 28px;font-family:var(--font);font-weight:800;font-size:1rem;cursor:pointer'>✕ CANCEL</button>";
+      document.body.appendChild(overlay);
+
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+        .then(stream => {
+          const video = document.getElementById("cam-video");
+          video.srcObject = stream;
+          window._camStream = stream;
+
+          const scanLoop = () => {
+            if (!document.getElementById("cam-overlay")) return;
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+              detector.detect(video).then(barcodes => {
+                if (barcodes.length > 0) {
+                  const val = barcodes[0].rawValue;
+                  window._stopCamScan();
+                  onResult(val.toUpperCase());
+                }
+              }).catch(() => {});
+            }
+            requestAnimationFrame(scanLoop);
+          };
+          video.onloadedmetadata = () => requestAnimationFrame(scanLoop);
+        })
+        .catch(() => {
+          window._stopCamScan();
+          fallbackFileCapture(onResult);
+        });
+    });
+  } else {
+    fallbackFileCapture(onResult);
+  }
+}
+
+function fallbackFileCapture(onResult) {
+  // Fallback: file input with camera capture — works on all mobile browsers
+  // Uses ZXing via CDN to decode the captured image
+  const inp = document.createElement("input");
+  inp.type = "file";
+  inp.accept = "image/*";
+  inp.capture = "environment";
+  inp.style.display = "none";
+  document.body.appendChild(inp);
+  inp.onchange = () => {
+    const file = inp.files[0];
+    if (!file) { document.body.removeChild(inp); return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+      document.body.removeChild(inp);
+      decodeBarcode(e.target.result, onResult);
+    };
+    reader.readAsDataURL(file);
+  };
+  inp.click();
+}
+
+function decodeBarcode(dataUrl, onResult) {
+  // Use ZXing-js if available, otherwise show manual entry toast
+  if (typeof ZXing !== "undefined") {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width; canvas.height = img.height;
+      canvas.getContext("2d").drawImage(img, 0, 0);
+      const codeReader = new ZXing.BrowserMultiFormatReader();
+      codeReader.decodeFromCanvas(canvas).then(result => {
+        onResult(result.getText().toUpperCase());
+      }).catch(() => {
+        showToast("Couldn't read barcode — type it manually", "var(--accent)");
+      });
+    };
+    img.src = dataUrl;
+  } else {
+    showToast("Type pallet # manually or update browser", "var(--accent)");
+  }
+}
+
+window._stopCamScan = function() {
+  if (window._camStream) {
+    window._camStream.getTracks().forEach(t => t.stop());
+    window._camStream = null;
+  }
+  const overlay = document.getElementById("cam-overlay");
+  if (overlay) overlay.remove();
+};
+
+function isPalletId(s) {
+  return /^CF\d{5}$/.test(s);
+}
+
+function doScan() {
+  const inp = document.getElementById("scan-inp");
+  if (!inp) return;
+  const raw = inp.value.trim().toUpperCase();
+  if (!raw) return;
+  inp.value = "";
+
+  // Pallet barcode scanned
+  if (isPalletId(raw)) {
+    if (pendingScan) {
+      // Fill the pallet field directly
+      const palInp = document.getElementById("pallet-inp");
+      if (palInp) {
+        palInp.value = raw;
+        palInp.style.borderColor = "var(--green)";
+        showToast("🪟 Pallet " + raw + " — enter qty and confirm", "var(--green)");
+        document.getElementById("qty-inp")?.focus();
+      }
+    } else {
+      palletLock = raw;
+      showToast("🪟 Pallet " + raw + " locked — scan a product", "var(--accent)");
+      renderPick();
+    }
+    return;
+  }
+
+  // Product code scanned
+  const orders = ORDER_LOOKUP[raw];
+  if (!orders) {
+    pendingScan = { type: "notfound", code: raw, desc: "", destCustomer: null };
+    renderPick();
+    return;
+  }
+
+  let destCustomer = null;
+  for (const ord of orders) {
+    const filled = (liveData.picks[raw] || {})[ord.customer] || 0;
+    if (filled < ord.qty) { destCustomer = ord.customer; break; }
+  }
+
+  pendingScan = {
+    type: destCustomer ? "order" : "b715",
+    code: raw,
+    desc: orders[0].desc,
+    destCustomer,
+  };
+  renderPick();
+}
+
+async function doConfirm() {
+  if (saving || !pendingScan) return;
+  const palInp = document.getElementById("pallet-inp");
+  const qtyInp = document.getElementById("qty-inp");
+  if (!palInp) return;
+  const pid = palInp.value.trim().toUpperCase();
+  if (!pid) { palInp.style.borderColor = "var(--red)"; palInp.focus(); return; }
+  const qty = Math.max(1, parseInt(qtyInp?.value) || 1);
+
+  saving = true;
+  const confBtn = document.getElementById("confirm-btn");
+  if (confBtn) { confBtn.disabled = true; confBtn.textContent = "SAVING..."; }
+
+  const p = pendingScan;
+  const code = p.code;
+  const ts = Date.now();
+  const is715 = p.type === "b715" || p.type === "notfound";
+  const updates = {};
+
+  let orderQty = 0, b715Qty = 0;
+  if (is715) {
+    b715Qty = qty;
+  } else {
+    const filled = (liveData.picks[code] || {})[p.destCustomer] || 0;
+    const needed = Math.max(0, (ORDER_LOOKUP[code]?.find(o => o.customer === p.destCustomer)?.qty || 0) - filled);
+    orderQty = Math.min(qty, needed);
+    b715Qty = qty - orderQty;
+  }
+
+  if (orderQty > 0) {
+    const cur = (liveData.picks[code] || {})[p.destCustomer] || 0;
+    updates["tracker/picks/" + code + "/" + p.destCustomer] = cur + orderQty;
+  }
+  if (b715Qty > 0) {
+    const cur = (liveData.picks[code] || {})["_715"] || 0;
+    updates["tracker/picks/" + code + "/_715"] = cur + b715Qty;
+  }
+
+  // Log entry
+  const logKey = "tracker/log/" + ts + "_" + Math.random().toString(36).slice(2, 7);
+  updates[logKey] = {
+    ts, worker: workerName, item: code,
+    desc: p.desc || (ORDER_LOOKUP[code]?.[0]?.desc) || code,
+    dest: is715 ? "Building 715" : "Order: " + p.destCustomer,
+    customer: is715 ? "715" : p.destCustomer,
+    pallet: pid, type: is715 ? "b715" : "order", qty
+  };
+
+  // Pallet
+  const existing = liveData.pallets[pid];
+  const newItem = { item: code, desc: p.desc || "", worker: workerName, ts, customer: is715 ? "715" : p.destCustomer, qty };
+  if (existing) {
+    const nextIdx = Object.keys(existing.items || {}).length;
+    updates["tracker/pallets/" + pid + "/items/" + nextIdx] = newItem;
+  } else {
+    updates["tracker/pallets/" + pid + "/dest"] = is715 ? "Building 715" : "Order: " + p.destCustomer;
+    updates["tracker/pallets/" + pid + "/created"] = ts;
+    updates["tracker/pallets/" + pid + "/items/0"] = newItem;
+  }
+
+  try {
+    await update(ref(db), updates);
+    const splitNote = (orderQty > 0 && b715Qty > 0)
+      ? ' <span style="font-size:.75rem;color:var(--muted)">(' + orderQty + ' → order, ' + b715Qty + ' → 715)</span>' : "";
+    lastResultHtml =
+      '<div class="card p16 mb16">' +
+        '<div class="section-lbl">Last confirmed</div>' +
+        '<div class="flex center gap10 wrap">' +
+          '<span style="font-family:var(--font);font-weight:800;font-size:1.1rem;color:var(--accent)">' + esc(code) + '</span>' +
+          '<span style="font-family:var(--font);font-weight:700">×' + qty + '</span>' +
+          splitNote +
+          '<span class="badge b-amber">🪟 ' + esc(pid) + '</span>' +
+        '</div>' +
+      '</div>';
+    pendingScan = null;
+    palletLock = null;
+    palletChoice = null;
+    saving = false;
+    renderPick();
+    showToast("✓ " + qty + " unit" + (qty > 1 ? "s" : "") + " saved to " + pid, "var(--green)");
+  } catch(e) {
+    saving = false;
+    showToast("Save failed — check connection", "var(--red)");
+    if (confBtn) { confBtn.disabled = false; confBtn.textContent = "CONFIRM ✓"; }
+  }
+}
+
+function orderStatus(code) {
+  return (ORDER_LOOKUP[code] || []).map(o => ({
+    customer: o.customer,
+    remaining: Math.max(0, o.qty - ((liveData.picks[code] || {})[o.customer] || 0))
+  }));
+}
+
+// ═══════════════════════════════════════════════════════
+// MANAGER VIEW
+// ═══════════════════════════════════════════════════════
+function renderManager() {
+  const mc = document.getElementById("main-content");
+  if (!mc) return;
+
+  let totalOrd=0, totalFill=0, total715=0, bOrd=0, bFill=0, sOrd=0, sFill=0;
+  for (const row of ORDER_DATA) {
+    const k = row.item.toUpperCase();
+    const f = Math.min((liveData.picks[k] || {})[row.customer] || 0, row.qty);
+    totalOrd += row.qty; totalFill += f;
+    if (row.customer === "Beall's") { bOrd += row.qty; bFill += f; }
+    else { sOrd += row.qty; sFill += f; }
+  }
+  for (const k in liveData.picks) total715 += liveData.picks[k]["_715"] || 0;
+
+  const pct  = totalOrd ? Math.round(totalFill / totalOrd * 100) : 0;
+  const bPct = bOrd ? Math.round(bFill / bOrd * 100) : 0;
+  const sPct = sOrd ? Math.round(sFill / sOrd * 100) : 0;
+
+  let html = '<div class="main">';
+
+  // KPIs
+  html += '<div class="kpi-grid mb20">';
+  html += kpi("OVERALL", pct + "%", totalFill.toLocaleString() + " / " + totalOrd.toLocaleString() + " units", "var(--accent)");
+  html += kpi("BEALL'S", bPct + "%", bFill.toLocaleString() + " / " + bOrd.toLocaleString(), "var(--bealls)");
+  html += kpi("SJL", sPct + "%", sFill.toLocaleString() + " / " + sOrd.toLocaleString(), "var(--sjl)");
+  html += kpi("→ 715", total715.toLocaleString(), "overflow units", "var(--purple)");
+  html += '</div>';
+
+  // Progress bar
+  html += '<div class="card p16 mb20">';
+  html += '<div class="flex between mb8"><span class="section-lbl" style="margin:0">OVERALL FILL</span><span style="font-family:var(--font);font-weight:700;color:var(--accent)">' + pct + '%</span></div>';
+  html += '<div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden">';
+  html += '<div style="height:100%;width:' + pct + '%;background:linear-gradient(90deg,var(--green),var(--accent));border-radius:4px;transition:width .5s"></div>';
+  html += '</div></div>';
+
+  // Sub-tab nav + export
+  html += '<div class="flex between center mb16 wrap gap10">';
+  html += '<div class="flex gap8">';
+  html += '<button class="btn-tab ' + (subTab==="orders"?"active":"") + '" id="st-orders">📋 ORDERS</button>';
+  html += '<button class="btn-tab ' + (subTab==="pallets"?"active":"") + '" id="st-pallets">🪟 PALLETS</button>';
+  html += '<button class="btn-tab ' + (subTab==="activity"?"active":"") + '" id="st-activity">⚡ ACTIVITY</button>';
+  html += '</div>';
+  html += '<button class="btn btn-outline btn-sm" id="export-btn" style="color:var(--green);border-color:var(--green)">⬇ EXPORT EXCEL</button>';
+  html += '</div>';
+
+  // Sub-tab content
+  html += '<div id="subtab">';
+  if (subTab === "orders")  html += buildOrdersTable();
+  else if (subTab === "pallets") html += buildPalletsView();
+  else html += buildActivityFeed();
+  html += '</div>';
+
+  html += '</div>'; // main
+  mc.innerHTML = html;
+
+  // Events — no inline onclick
+  document.getElementById("st-orders").onclick  = () => { subTab="orders";  refreshSubTab(); };
+  document.getElementById("st-pallets").onclick = () => { subTab="pallets"; refreshSubTab(); };
+  document.getElementById("st-activity").onclick= () => { subTab="activity";refreshSubTab(); };
+  document.getElementById("export-btn").onclick = exportExcel;
+
+  attachManagerEvents();
+}
+
+function refreshSubTab() {
+  const el = document.getElementById("subtab");
+  if (!el) return;
+  document.querySelectorAll(".btn-tab").forEach(b => {
+    b.classList.toggle("active",
+      (subTab==="orders" && b.id==="st-orders") ||
+      (subTab==="pallets" && b.id==="st-pallets") ||
+      (subTab==="activity" && b.id==="st-activity"));
+  });
+  if (subTab==="orders")       el.innerHTML = buildOrdersTable();
+  else if (subTab==="pallets") el.innerHTML = buildPalletsView();
+  else                         el.innerHTML = buildActivityFeed();
+  attachManagerEvents();
+}
+
+function attachManagerEvents() {
+  // Filter buttons
+  document.querySelectorAll(".filter-btn").forEach(btn => {
+    btn.onclick = () => { filterKey = btn.dataset.f; refreshSubTab(); };
+  });
+  // Sort headers
+  document.querySelectorAll("th[data-col]").forEach(th => {
+    th.onclick = () => {
+      const col = th.dataset.col;
+      if (sortCol === col) sortAsc = !sortAsc; else { sortCol = col; sortAsc = true; }
+      refreshSubTab();
+    };
+  });
+  // Search
+  const srch = document.getElementById("tbl-search");
+  if (srch) srch.oninput = e => { searchStr = e.target.value; refreshSubTab(); };
+
+  // Pallet buttons
+  document.querySelectorAll(".pallet-print-btn").forEach(btn => {
+    btn.onclick = () => printPalletTag(btn.dataset.pid);
+  });
+  document.querySelectorAll(".pallet-edit-btn").forEach(btn => {
+    btn.onclick = () => editPalletModal(btn.dataset.pid);
+  });
+}
+
+function kpi(label, val, sub, color) {
+  return '<div class="card kpi">' +
+    '<div class="kpi-lbl">' + label + '</div>' +
+    '<div class="kpi-val" style="color:' + color + '">' + val + '</div>' +
+    '<div class="kpi-sub">' + sub + '</div>' +
+    '</div>';
+}
+
+// ─── Orders table ────────────────────────────────────────────
+function buildOrdersTable() {
+  let rows = ORDER_DATA.map(row => {
+    const k = row.item.toUpperCase();
+    const filled = Math.min((liveData.picks[k] || {})[row.customer] || 0, row.qty);
+    const b715   = (liveData.picks[k] || {})["_715"] || 0;
+    const pct    = row.qty > 0 ? Math.min(100, Math.round(filled / row.qty * 100)) : 100;
+    return { ...row, k, filled, b715, pct, remaining: Math.max(0, row.qty - filled) };
+  });
+
+  if (filterKey === "bealls")  rows = rows.filter(r => r.customer === "Beall's");
+  else if (filterKey === "sjl")     rows = rows.filter(r => r.customer === "SJL");
+  else if (filterKey === "done")    rows = rows.filter(r => r.filled >= r.qty && r.qty > 0);
+  else if (filterKey === "pending") rows = rows.filter(r => r.filled < r.qty);
+
+  if (searchStr) {
+    const s = searchStr.toLowerCase();
+    rows = rows.filter(r => r.item.toLowerCase().includes(s) || r.desc.toLowerCase().includes(s));
+  }
+
+  rows.sort((a, b) => {
+    let va = a[sortCol] ?? "", vb = b[sortCol] ?? "";
+    if (typeof va === "string") { va = va.toLowerCase(); vb = vb.toLowerCase(); }
+    return sortAsc ? (va < vb ? -1 : va > vb ? 1 : 0) : (va < vb ? 1 : va > vb ? -1 : 0);
+  });
+
+  const filters = [
+    {f:"all",     lbl:"All"},
+    {f:"bealls",  lbl:"Beall's"},
+    {f:"sjl",     lbl:"SJL"},
+    {f:"done",    lbl:"✓ Done"},
+    {f:"pending", lbl:"Pending"},
+  ];
+
+  let html = '<div class="flex center gap10 mb12 wrap">';
+  html += '<input id="tbl-search" class="inp inp-sm" placeholder="🔍 Search..." value="' + esc(searchStr) + '" style="width:220px">';
+  html += '<div class="flex gap8 wrap">';
+  for (const f of filters) {
+    html += '<button class="btn btn-outline btn-sm filter-btn' + (filterKey===f.f?" active":"") +
+      '" data-f="' + f.f + '" style="border-radius:20px;' + (filterKey===f.f?"border-color:var(--accent);color:var(--accent)":"") + '">' + f.lbl + '</button>';
+  }
+  html += '</div></div>';
+
+  const cols = [
+    {col:"item",lbl:"Item #"},{col:"desc",lbl:"Description"},{col:"customer",lbl:"Customer"},
+    {col:"qty",lbl:"Ordered"},{col:"filled",lbl:"Filled"},{col:"b715",lbl:"→ 715"},{col:"pct",lbl:"Progress"}
+  ];
+
+  html += '<div class="tbl-wrap"><table><thead><tr>';
+  for (const c of cols) {
+    html += '<th data-col="' + c.col + '">' + c.lbl + (sortCol===c.col?(sortAsc?" ↑":" ↓"):"") + '</th>';
+  }
+  html += '</tr></thead><tbody>';
+
+  if (!rows.length) {
+    html += '<tr><td colspan="7" class="empty">No items match</td></tr>';
+  } else {
+    for (const r of rows) {
+      const done = r.filled >= r.qty && r.qty > 0;
+      html += '<tr>' +
+        '<td style="font-family:var(--font);font-weight:700;color:var(--accent)">' + esc(r.item) + '</td>' +
+        '<td style="font-size:.78rem;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.desc) + '">' + esc(r.desc) + '</td>' +
+        '<td><span class="badge ' + (r.customer==="Beall's"?"b-bealls":"b-sjl") + '">' + esc(r.customer) + '</span></td>' +
+        '<td style="text-align:right">' + r.qty + '</td>' +
+        '<td style="text-align:right;color:var(--green);font-weight:600">' + r.filled + '</td>' +
+        '<td style="text-align:right;color:var(--purple)">' + r.b715 + '</td>' +
+        '<td><div class="flex center gap8"><div class="prog"><div class="prog-fill" style="width:' + r.pct + '%;background:' + (done?"var(--purple)":"var(--green)") + '"></div></div><span style="font-size:.72rem;color:var(--muted)">' + r.pct + '%</span></div></td>' +
+        '</tr>';
+    }
+  }
+  html += '</tbody></table></div>';
+  return html;
+}
+
+// ─── Pallets view ─────────────────────────────────────────────
+function buildPalletsView() {
+  const entries = Object.entries(liveData.pallets).sort((a,b) => b[1].created - a[1].created);
+  if (!entries.length) return '<div class="empty">No pallets yet</div>';
+
+  let html = "";
+  for (const [pid, pdata] of entries) {
+    const items = Object.values(pdata.items || {});
+    const agg = {};
+    for (const it of items) {
+      if (!agg[it.item]) agg[it.item] = { ...it, count: 0 };
+      agg[it.item].count += (it.qty || 1);
+    }
+    const totalQty = Object.values(agg).reduce((s, it) => s + it.count, 0);
+    const workers = [...new Set(items.map(i => i.worker))].join(", ");
+    const is715 = pdata.dest?.includes("715");
+
+    html += '<div class="card pallet-card">';
+    html += '<div class="flex center gap8 wrap mb8">';
+    html += '<span class="pallet-id">🪟 ' + esc(pid) + '</span>';
+    html += '<span class="badge ' + (is715?"b-purple":"b-green") + '">' + esc(pdata.dest || "") + '</span>';
+    html += '<span style="font-size:.78rem;color:var(--muted);margin-left:auto">' + totalQty + ' unit' + (totalQty!==1?"s":"") + '</span>';
+    html += '<button class="btn btn-outline btn-sm pallet-print-btn" data-pid="' + esc(pid) + '" style="color:var(--accent);border-color:var(--accent)">🖨 PRINT</button>';
+    html += '<button class="btn btn-outline btn-sm pallet-edit-btn" data-pid="' + esc(pid) + '" style="color:var(--sjl);border-color:var(--sjl)">✏ EDIT</button>';
+    html += '</div>';
+    html += '<div class="flex wrap gap8">';
+    for (const it of Object.values(agg)) {
+      html += '<span class="item-tag">' +
+        '<span style="color:var(--accent);font-family:var(--font);font-weight:700">' + esc(it.item) + '</span>' +
+        (it.count > 1 ? ' <span style="color:var(--muted)">×' + it.count + '</span>' : '') +
+        '</span>';
+    }
+    html += '</div>';
+    html += '<div style="margin-top:8px;font-size:.72rem;color:var(--muted)">Workers: ' + esc(workers) + ' · ' + new Date(pdata.created).toLocaleString() + '</div>';
+    html += '</div>';
+  }
+  return html;
+}
+
+// ─── Activity feed ────────────────────────────────────────────
+function buildActivityFeed() {
+  if (!liveData.log.length) return '<div class="empty">No activity yet</div>';
+  let html = '<div class="card">';
+  html += '<div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between">';
+  html += '<div class="section-lbl" style="margin:0">LIVE SCAN FEED</div>';
+  html += '<span style="font-size:.75rem;color:var(--muted)">' + liveData.log.length + ' total</span>';
+  html += '</div>';
+  for (const s of liveData.log.slice(0, 120)) {
+    const isBg = s.type === "b715";
+    html += '<div class="feed-row">' +
+      '<span style="font-size:.7rem;color:var(--muted);min-width:68px">' + new Date(s.ts).toLocaleTimeString() + '</span>' +
+      '<span style="font-family:var(--font);font-weight:700;color:var(--accent);min-width:70px">' + esc(s.item) + '</span>' +
+      '<span style="font-family:var(--font);font-weight:700;min-width:32px">×' + (s.qty||1) + '</span>' +
+      '<span class="hide-sm" style="flex:1;font-size:.78rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(s.desc||"") + '</span>' +
+      '<span class="badge ' + (isBg?"b-purple":"b-green") + '">' + esc(s.dest||"") + '</span>' +
+      '<span class="badge b-amber">🪟 ' + esc(s.pallet||"") + '</span>' +
+      '<span style="font-size:.72rem;color:var(--muted);white-space:nowrap">' + esc(s.worker||"") + '</span>' +
+      '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+// ═══════════════════════════════════════════════════════
+// EDIT PALLET MODAL
+// ═══════════════════════════════════════════════════════
+function editPalletModal(pid) {
+  const pdata = liveData.pallets[pid];
+  if (!pdata) return;
+  const items = Object.values(pdata.items || {});
+  const agg = {};
+  for (const it of items) {
+    if (!agg[it.item]) agg[it.item] = { ...it, count: 0 };
+    agg[it.item].count += (it.qty || 1);
+  }
+  const others = Object.keys(liveData.pallets).filter(p => p !== pid).sort();
+
+  const div = document.createElement("div");
+  div.className = "overlay";
+  div.onclick = e => { if (e.target === div) closeModal(); };
+
+  let html = '<div class="modal pop">';
+  html += '<div style="font-family:var(--font);font-size:1.5rem;font-weight:900;color:var(--accent);margin-bottom:4px">✏ EDIT ' + esc(pid) + '</div>';
+  html += '<div style="color:var(--muted);font-size:.82rem;margin-bottom:16px">Check items to move to another pallet</div>';
+  html += '<div style="display:flex;flex-direction:column;gap:8px;max-height:260px;overflow-y:auto;margin-bottom:16px">';
+  for (const it of Object.values(agg)) {
+    html += '<label style="display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;cursor:pointer">';
+    html += '<input type="checkbox" data-item="' + esc(it.item) + '" style="width:18px;height:18px;accent-color:var(--accent)">';
+    html += '<span style="font-family:var(--font);font-weight:700;color:var(--accent);min-width:72px">' + esc(it.item) + '</span>';
+    html += '<span style="flex:1;font-size:.78rem;color:var(--muted)">' + esc(it.desc||"") + '</span>';
+    html += '<span style="font-family:var(--font);font-weight:700">×' + it.count + '</span>';
+    html += '</label>';
+  }
+  html += '</div>';
+  html += '<div class="section-lbl">Destination pallet</div>';
+  html += '<input id="move-to" class="inp inp-md w100" placeholder="e.g. CF00002" style="margin-bottom:8px">';
+  if (others.length) {
+    html += '<div class="flex wrap gap8" style="margin-bottom:16px">';
+    for (const p of others.slice(0, 10)) {
+      html += '<button class="quick-pallet btn btn-outline btn-sm" data-p="' + esc(p) + '" style="color:var(--sjl);border-color:var(--sjl)">' + esc(p) + '</button>';
+    }
+    html += '</div>';
+  }
+  html += '<div class="flex gap10">';
+  html += '<button class="btn btn-accent" style="flex:1" id="move-btn">MOVE ITEMS</button>';
+  html += '<button class="btn btn-outline" style="flex:1" id="move-cancel">CANCEL</button>';
+  html += '</div>';
+  html += '</div>';
+  div.innerHTML = html;
+  document.getElementById("modal-root").appendChild(div);
+
+  document.getElementById("move-cancel").onclick = closeModal;
+  document.getElementById("move-btn").onclick = () => doMoveItems(pid, div);
+  div.querySelectorAll(".quick-pallet").forEach(btn => {
+    btn.onclick = () => { document.getElementById("move-to").value = btn.dataset.p; };
+  });
+}
+
+async function doMoveItems(fromPid, modalEl) {
+  const checked = [...modalEl.querySelectorAll("input[type=checkbox]:checked")].map(c => c.dataset.item);
+  const toPid = (document.getElementById("move-to")?.value || "").trim().toUpperCase();
+  if (!checked.length) { showToast("Select at least one item", "var(--accent)"); return; }
+  if (!toPid)          { showToast("Enter a destination pallet", "var(--red)"); return; }
+  if (toPid === fromPid) { showToast("Same pallet!", "var(--accent)"); return; }
+
+  const fromPallet = liveData.pallets[fromPid];
+  if (!fromPallet) return;
+  const keepItems = {}, moveItems = [];
+  let keepIdx = 0;
+  for (const it of Object.values(fromPallet.items || {})) {
+    if (checked.includes(it.item)) moveItems.push(it);
+    else keepItems[keepIdx++] = it;
+  }
+
+  const updates = {};
+  if (!Object.keys(keepItems).length) updates["tracker/pallets/" + fromPid] = null;
+  else updates["tracker/pallets/" + fromPid + "/items"] = keepItems;
+
+  const destPallet = liveData.pallets[toPid];
+  const destCount  = destPallet ? Object.keys(destPallet.items || {}).length : 0;
+  for (let i = 0; i < moveItems.length; i++) {
+    updates["tracker/pallets/" + toPid + "/items/" + (destCount + i)] = { ...moveItems[i], movedFrom: fromPid };
+  }
+  if (!destPallet) {
+    updates["tracker/pallets/" + toPid + "/dest"]    = fromPallet.dest || "Building 715";
+    updates["tracker/pallets/" + toPid + "/created"] = Date.now();
+  }
+
+  try {
+    await update(ref(db), updates);
+    closeModal();
+    showToast("Moved " + moveItems.length + " item type(s) to " + toPid, "var(--green)");
+  } catch(e) {
+    showToast("Move failed — check connection", "var(--red)");
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// PRINT PALLET TAG
+// ═══════════════════════════════════════════════════════
+function printPalletTag(pid) {
+  const pdata = liveData.pallets[pid];
+  if (!pdata) return;
+  const items = Object.values(pdata.items || {});
+  const agg = {};
+  for (const it of items) {
+    if (!agg[it.item]) agg[it.item] = { ...it, count: 0 };
+    agg[it.item].count += (it.qty || 1);
+  }
+  const totalQty = Object.values(agg).reduce((s,it) => s + it.count, 0);
+  const is715 = pdata.dest?.includes("715");
+  const destColor = is715 ? "#7c3aed" : "#059669";
+
+  // Generate barcode as PNG data URL
+  let barcodeImg = "";
+  try {
+    const canvas = document.createElement("canvas");
+    JsBarcode(canvas, pid, { format:"CODE128", width:3, height:80, displayValue:false, margin:4, background:"#ffffff", lineColor:"#000000" });
+    barcodeImg = canvas.toDataURL("image/png");
+  } catch(e) { /* barcode failed, skip */ }
+
+  // Build rows string without template literals
+  let rowsHtml = "";
+  for (const it of Object.values(agg)) {
+    rowsHtml += "<tr>" +
+      "<td style='padding:5px 8px;border:1px solid #ddd;font-weight:700'>" + it.item + "</td>" +
+      "<td style='padding:5px 8px;border:1px solid #ddd;font-size:11px;color:#444'>" + (it.desc || "") + "</td>" +
+      "<td style='padding:5px 8px;border:1px solid #ddd;text-align:center;font-weight:700'>" + it.count + "</td>" +
+      "</tr>";
+  }
+  rowsHtml += "<tr style='background:#f5f5f5'>" +
+    "<td colspan='2' style='padding:5px 8px;border:1px solid #ddd;text-align:right;font-weight:700'>TOTAL</td>" +
+    "<td style='padding:5px 8px;border:1px solid #ddd;text-align:center;font-weight:700'>" + totalQty + "</td>" +
+    "</tr>";
+
+  const barcodeBlock = barcodeImg
+    ? "<div style='margin-top:14px;text-align:center'>" +
+        "<img src='" + barcodeImg + "' style='max-width:100%;height:70px;display:block;margin:0 auto'>" +
+        "<div style='font-family:monospace;font-size:14px;font-weight:700;letter-spacing:.2em;margin-top:4px'>" + pid + "</div>" +
+      "</div>"
+    : "<div style='margin-top:14px;text-align:center;font-family:monospace;font-size:14px;font-weight:700;letter-spacing:.2em;padding:8px;border:2px dashed #ccc'>" + pid + "</div>";
+
+  const tagHtml = "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Tag " + pid + "</title>" +
+    "<style>" +
+    "body{font-family:Arial,sans-serif;margin:0;padding:12px;background:#fff;color:#000}" +
+    ".tag{width:4in;border:3px solid #000;padding:18px;margin:0 auto}" +
+    ".logo{font-size:10px;font-weight:700;letter-spacing:.15em;color:#666;margin-bottom:10px}" +
+    ".pid{font-size:48px;font-weight:900;text-align:center;border:4px solid #000;padding:8px;letter-spacing:.05em;margin-bottom:10px;font-family:Arial,sans-serif}" +
+    ".dest{background:" + destColor + ";color:#fff;font-size:20px;font-weight:900;text-align:center;padding:8px;border-radius:4px;margin-bottom:10px}" +
+    ".meta{display:flex;justify-content:space-between;font-size:12px;color:#555;border-top:1px solid #ddd;border-bottom:1px solid #ddd;padding:6px 0;margin-bottom:10px}" +
+    "table{width:100%;border-collapse:collapse;font-size:12px}" +
+    "th{text-align:left;padding:5px 8px;background:#f0f0f0;border:1px solid #ddd;font-size:11px}" +
+    ".footer{margin-top:12px;font-size:10px;color:#999;text-align:center;border-top:1px solid #ddd;padding-top:8px}" +
+    "@media print{body{padding:0}}" +
+    "</style></head><body>" +
+    "<div class='tag'>" +
+    "<div class='logo'>BC WAREHOUSE TRACKER</div>" +
+    "<div class='pid'>" + pid + "</div>" +
+    "<div class='dest'>" + (pdata.dest || "Building 715") + "</div>" +
+    "<div class='meta'><span>Date: " + new Date(pdata.created).toLocaleDateString() + "</span><span>Total: " + totalQty + " units</span></div>" +
+    "<table><thead><tr><th>ITEM #</th><th>DESCRIPTION</th><th>QTY</th></tr></thead><tbody>" + rowsHtml + "</tbody></table>" +
+    barcodeBlock +
+    "<div class='footer'>Printed " + new Date().toLocaleString() + "</div>" +
+    "</div>" +
+    "<scr" + "ipt>window.onload=function(){window.focus();window.print();};window.onafterprint=function(){window.close()};<" + "/script>" +
+    "</body></html>";
+
+  const win = window.open("", "_blank", "width=520,height=780");
+  if (win) { win.document.write(tagHtml); win.document.close(); }
+  else showToast("Allow pop-ups to print tags", "var(--accent)");
+}
+
+// ═══════════════════════════════════════════════════════
+// EXCEL EXPORT
+// ═══════════════════════════════════════════════════════
+function exportExcel() {
+  const wb = XLSX.utils.book_new();
+
+  const s1 = [["Item #","Description","Customer","Qty Ordered","Qty Filled","Qty to 715","Remaining","% Complete"]];
+  for (const row of ORDER_DATA) {
+    const k = row.item.toUpperCase();
+    const filled = Math.min((liveData.picks[k]||{})[row.customer]||0, row.qty);
+    const b715   = (liveData.picks[k]||{})["_715"]||0;
+    s1.push([row.item, row.desc, row.customer, row.qty, filled, b715, Math.max(0,row.qty-filled), Math.round(filled/row.qty*100)+"%"]);
+  }
+  const ws1 = XLSX.utils.aoa_to_sheet(s1);
+  ws1["!cols"] = [{wch:10},{wch:42},{wch:10},{wch:12},{wch:10},{wch:10},{wch:10},{wch:12}];
+  XLSX.utils.book_append_sheet(wb, ws1, "Order Status");
+
+  const s2 = [["Pallet ID","Destination","Item #","Description","Customer","Qty","Worker","Time"]];
+  for (const [pid,pd] of Object.entries(liveData.pallets).sort((a,b)=>a[0].localeCompare(b[0]))) {
+    for (const it of Object.values(pd.items||{})) {
+      s2.push([pid, pd.dest||"", it.item, it.desc||"", it.customer||"", it.qty||1, it.worker||"", it.ts?new Date(it.ts).toLocaleString():""]);
+    }
+  }
+  const ws2 = XLSX.utils.aoa_to_sheet(s2);
+  ws2["!cols"] = [{wch:12},{wch:18},{wch:10},{wch:40},{wch:10},{wch:6},{wch:12},{wch:20}];
+  XLSX.utils.book_append_sheet(wb, ws2, "Pallets");
+
+  const s3 = [["Time","Worker","Item #","Description","Destination","Customer","Pallet","Qty"]];
+  for (const s of [...liveData.log].reverse()) {
+    s3.push([new Date(s.ts).toLocaleString(), s.worker, s.item, s.desc||"", s.dest||"", s.customer||"", s.pallet||"", s.qty||1]);
+  }
+  const ws3 = XLSX.utils.aoa_to_sheet(s3);
+  ws3["!cols"] = [{wch:20},{wch:12},{wch:10},{wch:40},{wch:22},{wch:10},{wch:12},{wch:6}];
+  XLSX.utils.book_append_sheet(wb, ws3, "Activity Log");
+
+  XLSX.writeFile(wb, "BC_Warehouse_" + new Date().toISOString().slice(0,10) + ".xlsx");
+  showToast("Excel exported!", "var(--green)");
+}
+
+// ═══════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════
+function esc(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+
+function showToast(msg, color) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.style.borderColor = color || "var(--accent)";
+  t.style.display = "block";
+  clearTimeout(t._tmr);
+  t._tmr = setTimeout(() => { t.style.display = "none"; }, 2800);
+}
+
+// ═══════════════════════════════════════════════════════
+// START
+// ═══════════════════════════════════════════════════════
+boot();
+</script>
+</body>
+</html>
