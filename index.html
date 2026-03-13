@@ -760,13 +760,13 @@ function buildConfirmCard() {
     html += '<div style="font-size:.72rem;color:var(--muted);font-weight:700;letter-spacing:.08em;margin-bottom:6px">PALLET #</div>';
     html += '<input id="pallet-inp" class="inp inp-md w100" value="' + esc(suggested) + '" style="font-family:var(--font);font-weight:800;letter-spacing:.06em;margin-bottom:12px">';
     html += '<div style="display:flex;gap:10px">';
-    html += '<div style="flex:1">';
+    html += '<div style="flex:2;min-width:100px">';
     html += '<div style="font-size:.72rem;color:var(--muted);font-weight:700;letter-spacing:.08em;margin-bottom:6px">QTY</div>';
-    html += '<input id="qty-inp" class="inp inp-md w100" type="number" min="1" max="9999" value="1" style="text-align:center">';
+    html += '<input id="qty-inp" class="inp w100" type="number" min="1" max="9999" value="1" style="text-align:center;font-size:1.6rem;font-family:var(--font);font-weight:900;padding:10px 8px">';
     html += '</div>';
-    html += '<div style="display:flex;gap:8px;align-self:flex-end">';
-    html += '<button id="confirm-btn" class="btn ' + (is715 ? "btn-purple" : "btn-green") + '">CONFIRM ✓</button>';
-    html += '<button id="back-btn" class="btn btn-outline" style="padding:0 14px">← Back</button>';
+    html += '<div style="display:flex;flex-direction:column;gap:6px;align-self:flex-end">';
+    html += '<button id="confirm-btn" class="btn ' + (is715 ? "btn-purple" : "btn-green") + '" style="padding:0 14px;font-size:.85rem;height:38px">✓ CONFIRM</button>';
+    html += '<button id="back-btn" class="btn btn-outline" style="padding:0 14px;font-size:.85rem;height:38px">← Back</button>';
     html += '</div>';
     html += '</div>';
     html += '</div>';
