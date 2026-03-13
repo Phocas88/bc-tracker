@@ -1251,7 +1251,7 @@ function buildPalletsView() {
     html += '<span class="badge ' + (is715?"b-purple":"b-green") + '">' + esc(pdata.dest || "") + '</span>';
     html += '<span style="font-size:.78rem;color:var(--muted);margin-left:auto">' + totalQty + ' unit' + (totalQty!==1?"s":"") + '</span>';
     html += '<button class="btn btn-outline btn-sm pallet-print-btn" data-pid="' + esc(pid) + '" style="color:var(--accent);border-color:var(--accent)">🖨 PRINT</button>';
-    html += '<button class="btn btn-outline btn-sm pallet-edit-btn" data-pid="' + esc(pid) + '" style="color:var(--sjl);border-color:var(--sjl)">✏ EDIT</button>';
+    html += '<button class="btn btn-outline btn-sm pallet-edit-btn" data-pid="' + esc(pid) + '" style="color:var(--sjl);border-color:var(--sjl)">✏ EDIT / FIX QTY</button>';
     html += '</div>';
     html += '<div class="flex wrap gap8">';
     for (const it of Object.values(agg)) {
@@ -1297,11 +1297,15 @@ function buildActivityFeed() {
 function editPalletModal(pid) {
   const pdata = liveData.pallets[pid];
   if (!pdata) return;
-  const items = Object.values(pdata.items || {});
-  const agg = {};
-  for (const it of items) {
-    if (!agg[it.item]) agg[it.item] = { ...it, count: 0 };
-    agg[it.item].count += (it.qty || 1);
+
+  // Build aggregated view keyed by item code
+  const rawItems = pdata.items || {};
+  const agg = {}; // itemCode -> {desc, customer, totalQty, keys:[firebase keys]}
+  for (const [k, it] of Object.entries(rawItems)) {
+    const code = it.item;
+    if (!agg[code]) agg[code] = { desc: it.desc||"", customer: it.customer||"", totalQty: 0, keys: [] };
+    agg[code].totalQty += (it.qty || 1);
+    agg[code].keys.push(k);
   }
   const others = Object.keys(liveData.pallets).filter(p => p !== pid).sort();
 
@@ -1309,47 +1313,159 @@ function editPalletModal(pid) {
   div.className = "overlay";
   div.onclick = e => { if (e.target === div) closeModal(); };
 
-  let html = '<div class="modal pop">';
-  html += '<div style="font-family:var(--font);font-size:1.5rem;font-weight:900;color:var(--accent);margin-bottom:4px">✏ EDIT ' + esc(pid) + '</div>';
-  html += '<div style="color:var(--muted);font-size:.82rem;margin-bottom:16px">Check items to move to another pallet</div>';
-  html += '<div style="display:flex;flex-direction:column;gap:8px;max-height:260px;overflow-y:auto;margin-bottom:16px">';
-  for (const it of Object.values(agg)) {
-    html += '<label style="display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;cursor:pointer">';
-    html += '<input type="checkbox" data-item="' + esc(it.item) + '" style="width:18px;height:18px;accent-color:var(--accent)">';
-    html += '<span style="font-family:var(--font);font-weight:700;color:var(--accent);min-width:72px">' + esc(it.item) + '</span>';
-    html += '<span style="flex:1;font-size:.78rem;color:var(--muted)">' + esc(it.desc||"") + '</span>';
-    html += '<span style="font-family:var(--font);font-weight:700">×' + it.count + '</span>';
-    html += '</label>';
+  let html = '<div class="modal pop" style="max-width:500px">';
+  html += '<div style="font-family:var(--font);font-size:1.5rem;font-weight:900;color:var(--accent);margin-bottom:2px">✏ EDIT PALLET ' + esc(pid) + '</div>';
+  html += '<div style="color:var(--muted);font-size:.78rem;margin-bottom:14px">Edit quantities, delete items, or move items to another pallet</div>';
+
+  // ── Section 1: Edit / Delete items ──────────────────────────────
+  html += '<div style="font-family:var(--font);font-size:.68rem;font-weight:700;letter-spacing:.1em;color:var(--muted);margin-bottom:8px">ITEMS ON THIS PALLET</div>';
+  html += '<div style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto;margin-bottom:16px" id="edit-items-list">';
+  for (const [code, it] of Object.entries(agg)) {
+    html += '<div style="display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 12px">';
+    html += '<input type="checkbox" class="move-chk" data-item="' + esc(code) + '" style="width:16px;height:16px;accent-color:var(--accent);flex-shrink:0" title="Check to move to another pallet">';
+    html += '<span style="font-family:var(--font);font-weight:700;color:var(--accent);min-width:68px;font-size:.95rem">' + esc(code) + '</span>';
+    html += '<span style="flex:1;font-size:.75rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(it.desc) + '</span>';
+    html += '<span style="color:var(--muted);font-size:.75rem;margin-right:4px">Qty:</span>';
+    html += '<input type="number" class="qty-edit-inp inp" min="0" max="9999" value="' + it.totalQty + '" data-item="' + esc(code) + '" '
+          + 'style="width:64px;padding:4px 8px;font-size:.9rem;font-family:var(--font);font-weight:700;text-align:center" '
+          + 'title="Edit quantity (set to 0 to delete)">';
+    html += '<button class="del-item-btn" data-item="' + esc(code) + '" '
+          + 'style="background:none;border:1px solid var(--red);color:var(--red);border-radius:5px;padding:3px 8px;font-size:.8rem;cursor:pointer;flex-shrink:0" '
+          + 'title="Delete this item from pallet">🗑</button>';
+    html += '</div>';
   }
   html += '</div>';
-  html += '<div class="section-lbl">Destination pallet</div>';
-  html += '<input id="move-to" class="inp inp-md w100" placeholder="e.g. CF00002" style="margin-bottom:8px">';
+
+  // ── Save qty changes button ──────────────────────────────────────
+  html += '<button class="btn btn-green w100" id="save-qty-btn" style="margin-bottom:14px">💾 SAVE QTY CHANGES</button>';
+
+  // ── Section 2: Move checked items ───────────────────────────────
+  html += '<div style="border-top:1px solid var(--border);padding-top:12px;margin-top:2px">';
+  html += '<div style="font-family:var(--font);font-size:.68rem;font-weight:700;letter-spacing:.1em;color:var(--muted);margin-bottom:8px">MOVE CHECKED ITEMS TO ANOTHER PALLET</div>';
+  html += '<input id="move-to" class="inp inp-md w100" placeholder="Enter pallet # e.g. CF00002" style="margin-bottom:8px">';
   if (others.length) {
-    html += '<div class="flex wrap gap8" style="margin-bottom:16px">';
+    html += '<div class="flex wrap gap8" style="margin-bottom:10px">';
     for (const p of others.slice(0, 10)) {
       html += '<button class="quick-pallet btn btn-outline btn-sm" data-p="' + esc(p) + '" style="color:var(--sjl);border-color:var(--sjl)">' + esc(p) + '</button>';
     }
     html += '</div>';
   }
-  html += '<div class="flex gap10">';
-  html += '<button class="btn btn-accent" style="flex:1" id="move-btn">MOVE ITEMS</button>';
-  html += '<button class="btn btn-outline" style="flex:1" id="move-cancel">CANCEL</button>';
+  html += '<button class="btn btn-outline w100" id="move-btn" style="color:var(--sjl);border-color:var(--sjl)">↗ MOVE CHECKED ITEMS</button>';
   html += '</div>';
+
+  html += '<button class="btn btn-outline w100" id="edit-cancel" style="margin-top:10px">CLOSE</button>';
   html += '</div>';
+
   div.innerHTML = html;
   document.getElementById("modal-root").appendChild(div);
 
-  document.getElementById("move-cancel").onclick = closeModal;
+  document.getElementById("edit-cancel").onclick = closeModal;
+  document.getElementById("save-qty-btn").onclick = () => doSaveQtyChanges(pid, div, agg);
   document.getElementById("move-btn").onclick = () => doMoveItems(pid, div);
   div.querySelectorAll(".quick-pallet").forEach(btn => {
     btn.onclick = () => { document.getElementById("move-to").value = btn.dataset.p; };
   });
+  div.querySelectorAll(".del-item-btn").forEach(btn => {
+    btn.onclick = () => doDeleteItem(pid, btn.dataset.item, agg);
+  });
+}
+
+// ── Save qty edits ────────────────────────────────────────────────────────────
+async function doSaveQtyChanges(pid, modalEl, agg) {
+  const rawItems = liveData.pallets[pid]?.items || {};
+  const inputs = modalEl.querySelectorAll(".qty-edit-inp");
+  const updates = {};
+  let changed = 0;
+
+  for (const inp of inputs) {
+    const code = inp.dataset.item;
+    const newQty = parseInt(inp.value);
+    if (isNaN(newQty) || newQty < 0) continue;
+    const it = agg[code];
+    if (!it) continue;
+
+    if (newQty === 0) {
+      // Delete all entries for this item
+      for (const k of it.keys) {
+        updates["tracker/pallets/" + pid + "/items/" + k] = null;
+      }
+      // Also subtract from picks counter
+      const curFill = (liveData.picks[code] || {})[it.customer] || 0;
+      if (it.customer && it.customer !== "715" && curFill > 0) {
+        updates["tracker/picks/" + code + "/" + it.customer] = Math.max(0, curFill - it.totalQty);
+      } else if (it.customer === "715") {
+        const cur715 = (liveData.picks[code] || {})["_715"] || 0;
+        updates["tracker/picks/" + code + "/_715"] = Math.max(0, cur715 - it.totalQty);
+      }
+      changed++;
+    } else if (newQty !== it.totalQty) {
+      const diff = newQty - it.totalQty;
+      // Update the first key's qty to hold the new total, remove extra keys
+      const firstKey = it.keys[0];
+      updates["tracker/pallets/" + pid + "/items/" + firstKey + "/qty"] = newQty;
+      // Remove extra duplicate keys if any
+      for (let i = 1; i < it.keys.length; i++) {
+        updates["tracker/pallets/" + pid + "/items/" + it.keys[i]] = null;
+      }
+      // Adjust picks counter
+      if (it.customer && it.customer !== "715") {
+        const curFill = (liveData.picks[code] || {})[it.customer] || 0;
+        updates["tracker/picks/" + code + "/" + it.customer] = Math.max(0, curFill + diff);
+      } else {
+        const cur715 = (liveData.picks[code] || {})["_715"] || 0;
+        updates["tracker/picks/" + code + "/_715"] = Math.max(0, cur715 + diff);
+      }
+      changed++;
+    }
+  }
+
+  if (!changed) { showToast("No changes to save", "var(--muted)"); return; }
+
+  const btn = document.getElementById("save-qty-btn");
+  if (btn) { btn.textContent = "SAVING..."; btn.disabled = true; }
+  try {
+    await update(ref(db), updates);
+    closeModal();
+    showToast("✓ " + changed + " item(s) updated", "var(--green)");
+  } catch(e) {
+    showToast("Save failed — check connection", "var(--red)");
+    if (btn) { btn.textContent = "💾 SAVE QTY CHANGES"; btn.disabled = false; }
+  }
+}
+
+// ── Delete single item from pallet ────────────────────────────────────────────
+async function doDeleteItem(pid, code, agg) {
+  const it = agg[code];
+  if (!it) return;
+  if (!confirm("Delete " + code + " (×" + it.totalQty + ") from pallet " + pid + "?")) return;
+
+  const rawItems = liveData.pallets[pid]?.items || {};
+  const updates = {};
+  for (const k of it.keys) {
+    updates["tracker/pallets/" + pid + "/items/" + k] = null;
+  }
+  // Adjust picks counter
+  if (it.customer && it.customer !== "715") {
+    const curFill = (liveData.picks[code] || {})[it.customer] || 0;
+    updates["tracker/picks/" + code + "/" + it.customer] = Math.max(0, curFill - it.totalQty);
+  } else {
+    const cur715 = (liveData.picks[code] || {})["_715"] || 0;
+    updates["tracker/picks/" + code + "/_715"] = Math.max(0, cur715 - it.totalQty);
+  }
+
+  try {
+    await update(ref(db), updates);
+    closeModal();
+    showToast("🗑 " + code + " removed from " + pid, "var(--red)");
+  } catch(e) {
+    showToast("Delete failed — check connection", "var(--red)");
+  }
 }
 
 async function doMoveItems(fromPid, modalEl) {
-  const checked = [...modalEl.querySelectorAll("input[type=checkbox]:checked")].map(c => c.dataset.item);
+  const checked = [...modalEl.querySelectorAll("input.move-chk:checked")].map(c => c.dataset.item);
   const toPid = (document.getElementById("move-to")?.value || "").trim().toUpperCase();
-  if (!checked.length) { showToast("Select at least one item", "var(--accent)"); return; }
+  if (!checked.length) { showToast("Check items to move first", "var(--accent)"); return; }
   if (!toPid)          { showToast("Enter a destination pallet", "var(--red)"); return; }
   if (toPid === fromPid) { showToast("Same pallet!", "var(--accent)"); return; }
 
@@ -1384,6 +1500,7 @@ async function doMoveItems(fromPid, modalEl) {
     showToast("Move failed — check connection", "var(--red)");
   }
 }
+
 
 // ═══════════════════════════════════════════════════════
 // PRINT PALLET TAG
