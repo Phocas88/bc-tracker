@@ -1353,13 +1353,17 @@ function editPalletModal(pid) {
   html += '<button class="btn btn-outline w100" id="move-btn" style="color:var(--sjl);border-color:var(--sjl)">↗ MOVE CHECKED ITEMS</button>';
   html += '</div>';
 
-  html += '<button class="btn btn-outline w100" id="edit-cancel" style="margin-top:10px">CLOSE</button>';
+  html += '<div class="flex gap10" style="margin-top:10px">';
+  html += '<button class="btn btn-outline" style="flex:1" id="edit-cancel">CLOSE</button>';
+  html += '<button class="btn" style="flex:1;background:var(--red);color:#fff" id="delete-pallet-btn">🗑 DELETE ENTIRE PALLET</button>';
+  html += '</div>';
   html += '</div>';
 
   div.innerHTML = html;
   document.getElementById("modal-root").appendChild(div);
 
   document.getElementById("edit-cancel").onclick = closeModal;
+  document.getElementById("delete-pallet-btn").onclick = () => doDeletePallet(pid, agg);
   document.getElementById("save-qty-btn").onclick = () => doSaveQtyChanges(pid, div, agg);
   document.getElementById("move-btn").onclick = () => doMoveItems(pid, div);
   div.querySelectorAll(".quick-pallet").forEach(btn => {
@@ -1368,6 +1372,34 @@ function editPalletModal(pid) {
   div.querySelectorAll(".del-item-btn").forEach(btn => {
     btn.onclick = () => doDeleteItem(pid, btn.dataset.item, agg);
   });
+}
+
+// ── Delete entire pallet ─────────────────────────────────────────────────────
+async function doDeletePallet(pid, agg) {
+  if (!confirm("Delete entire pallet " + pid + " and reverse all its counts?\nThis cannot be undone.")) return;
+
+  const updates = {};
+  // Remove the whole pallet node
+  updates["tracker/pallets/" + pid] = null;
+
+  // Reverse every item's fill count
+  for (const [code, it] of Object.entries(agg)) {
+    if (it.customer && it.customer !== "715") {
+      const cur = (liveData.picks[code] || {})[it.customer] || 0;
+      updates["tracker/picks/" + code + "/" + it.customer] = Math.max(0, cur - it.totalQty);
+    } else {
+      const cur = (liveData.picks[code] || {})["_715"] || 0;
+      updates["tracker/picks/" + code + "/_715"] = Math.max(0, cur - it.totalQty);
+    }
+  }
+
+  try {
+    await update(ref(db), updates);
+    closeModal();
+    showToast("🗑 Pallet " + pid + " deleted", "var(--red)");
+  } catch(e) {
+    showToast("Delete failed — check connection", "var(--red)");
+  }
 }
 
 // ── Save qty edits ────────────────────────────────────────────────────────────
