@@ -3999,20 +3999,34 @@ function renderManager() {
   const mc = document.getElementById("main-content");
   if (!mc) return;
 
-  let totalOrd=0, totalFill=0, total715=0, bOrd=0, bFill=0, sOrd=0, sFill=0;
+  let totalOrd=0, totalFill=0, bOrd=0, bFill=0, sOrd=0, sFill=0;
+  let b715Ord=0, b715Fill=0;
+
   for (const row of ORDER_DATA) {
-    if (row.customer === "Building 715") continue; // handled separately
     const k = row.item.toUpperCase();
+    if (row.customer === "Building 715") {
+      // 715 warehouse — track separately using pallet data (not picks counter)
+      b715Ord += row.qty;
+      continue;
+    }
     const f = Math.min((liveData.picks[k] || {})[row.customer] || 0, row.qty);
     totalOrd += row.qty; totalFill += f;
     if (row.customer === "Beall's") { bOrd += row.qty; bFill += f; }
     else { sOrd += row.qty; sFill += f; }
   }
-  for (const k in liveData.picks) total715 += liveData.picks[k]["_715"] || 0;
 
-  const pct  = totalOrd ? Math.round(totalFill / totalOrd * 100) : 0;
-  const bPct = bOrd ? Math.round(bFill / bOrd * 100) : 0;
-  const sPct = sOrd ? Math.round(sFill / sOrd * 100) : 0;
+  // Calculate 715 fill from actual pallet data (immune to stale picks counters)
+  for (const pdata of Object.values(liveData.pallets)) {
+    if (!(pdata.dest || "").includes("715")) continue;
+    for (const it of Object.values(pdata.items || {})) {
+      b715Fill += (it.qty || 1);
+    }
+  }
+
+  const pct    = totalOrd ? Math.round(totalFill / totalOrd * 100) : 0;
+  const bPct   = bOrd ? Math.round(bFill / bOrd * 100) : 0;
+  const sPct   = sOrd ? Math.round(sFill / sOrd * 100) : 0;
+  const b715Pct = b715Ord ? Math.min(100, Math.round(b715Fill / b715Ord * 100)) : 0;
 
   let html = '<div class="main">';
 
@@ -4021,7 +4035,7 @@ function renderManager() {
   html += kpi("OVERALL", pct + "%", totalFill.toLocaleString() + " / " + totalOrd.toLocaleString() + " units", "var(--accent)");
   html += kpi("BEALL'S", bPct + "%", bFill.toLocaleString() + " / " + bOrd.toLocaleString(), "var(--bealls)");
   html += kpi("SJL", sPct + "%", sFill.toLocaleString() + " / " + sOrd.toLocaleString(), "var(--sjl)");
-  html += kpi("→ 715", total715.toLocaleString(), "overflow units", "var(--purple)");
+  html += kpi("→ BLDG 715", b715Pct + "%", b715Fill.toLocaleString() + " / " + b715Ord.toLocaleString() + " units", "var(--purple)");
   html += '</div>';
 
   // Progress bar
@@ -4039,6 +4053,7 @@ function renderManager() {
   html += '<button class="btn-tab ' + (subTab==="activity"?"active":"") + '" id="st-activity">⚡ ACTIVITY</button>';
   html += '</div>';
   html += '<button class="btn btn-outline btn-sm" id="export-btn" style="color:var(--green);border-color:var(--green)">⬇ EXPORT EXCEL</button>';
+  html += '<button class="btn btn-outline btn-sm" id="recalc-btn" style="color:var(--accent);border-color:var(--accent)">🔄 RECALC COUNTS</button>';
   html += '</div>';
 
   // Sub-tab content
@@ -4056,6 +4071,7 @@ function renderManager() {
   document.getElementById("st-pallets").onclick = () => { subTab="pallets"; refreshSubTab(); };
   document.getElementById("st-activity").onclick= () => { subTab="activity";refreshSubTab(); };
   document.getElementById("export-btn").onclick = exportExcel;
+  document.getElementById("recalc-btn").onclick = recalcAllCounts;
 
   attachManagerEvents();
 }
@@ -4703,6 +4719,53 @@ function printPalletTag(pid) {
 // ═══════════════════════════════════════════════════════
 // EXCEL EXPORT
 // ═══════════════════════════════════════════════════════
+// ── Recalculate ALL picks counters from pallet data ──────────────────────────
+// Fixes any stale counts caused by edits, deletes, or data entry errors
+async function recalcAllCounts() {
+  const btn = document.getElementById("recalc-btn");
+  if (btn) { btn.textContent = "⏳ RECALCULATING..."; btn.disabled = true; }
+
+  // Build correct totals by scanning every pallet item
+  // Structure: totals[itemCode][customer] = qty
+  const totals = {};
+  for (const pdata of Object.values(liveData.pallets)) {
+    for (const it of Object.values(pdata.items || {})) {
+      const code = it.item;
+      const cust = it.customer || "715";
+      if (!totals[code]) totals[code] = {};
+      totals[code][cust] = (totals[code][cust] || 0) + (it.qty || 1);
+    }
+  }
+
+  // Build Firebase updates — set every picks entry to the recalculated value
+  const updates = {};
+
+  // First: zero out all existing picks entries so removed items get cleared
+  for (const code in liveData.picks) {
+    for (const cust in liveData.picks[code]) {
+      const key = cust === "_715" ? "_715" : cust;
+      updates["tracker/picks/" + code + "/" + key] = 0;
+    }
+  }
+
+  // Then: write the correct values from pallet data
+  for (const code in totals) {
+    for (const cust in totals[code]) {
+      const key = (cust === "715" || cust === "Building 715") ? "_715" : cust;
+      updates["tracker/picks/" + code + "/" + key] = totals[code][cust];
+    }
+  }
+
+  try {
+    await update(ref(db), updates);
+    showToast("✓ All counts recalculated from pallet data", "var(--green)");
+  } catch(e) {
+    showToast("Recalc failed — check connection", "var(--red)");
+  } finally {
+    if (btn) { btn.textContent = "🔄 RECALC COUNTS"; btn.disabled = false; }
+  }
+}
+
 function exportExcel() {
   const wb = XLSX.utils.book_new();
 
