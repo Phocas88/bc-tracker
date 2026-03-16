@@ -161,7 +161,7 @@ tbody tr:hover td{background:rgba(255,255,255,.02)}
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, onValue, update } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getDatabase, ref, onValue, update, onDisconnect, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 // ═══════════════════════════════════════════════════════
 // CONFIG
@@ -3353,7 +3353,7 @@ function boot() {
         document.getElementById("loading").style.display = "none";
         document.getElementById("app").style.display = "flex";
         const saved = localStorage.getItem("bc_worker_name");
-        if (saved) { workerName = saved; renderShell(); renderView(); }
+        if (saved) { workerName = saved; renderShell(); renderView(); setupPresence(workerName); }
         else showNameScreen();
       } else {
         syncHeader();
@@ -3392,6 +3392,7 @@ function submitName() {
   localStorage.setItem("bc_worker_name", v);
   renderShell();
   renderView();
+  setupPresence(workerName);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -3407,6 +3408,8 @@ function renderShell() {
           '<span>LIVE</span>' +
           '<span style="color:var(--border)">·</span>' +
           '<span id="hdr-name">' + esc(workerName) + '</span>' +
+          '<span style="color:var(--border)">·</span>' +
+          '<span id="hdr-online" style="color:var(--green);font-weight:600" title="Active users">👥 —</span>' +
           '<span id="hdr-sync" style="color:var(--border)"></span>' +
         '</div>' +
       '</div>' +
@@ -3421,6 +3424,44 @@ function renderShell() {
   document.getElementById("tab-pick").onclick    = () => setTab("pick");
   document.getElementById("tab-mgr").onclick     = () => setTab("manager");
   document.getElementById("tab-logout").onclick  = logout;
+}
+
+// ══════════════════════════════════════════════════════
+// PRESENCE — live active user tracking
+// ══════════════════════════════════════════════════════
+let presenceRef = null;
+
+function setupPresence(name) {
+  // Generate a unique session ID for this browser tab
+  const sessionId = Math.random().toString(36).slice(2, 10);
+  const connRef   = ref(db, ".info/connected");
+  presenceRef     = ref(db, "tracker/presence/" + sessionId);
+
+  onValue(connRef, snap => {
+    if (!snap.val()) return; // offline
+
+    // Write our presence record; auto-delete on disconnect
+    onDisconnect(presenceRef).remove();
+    update(presenceRef, {
+      name:    name,
+      tab:     tab || "pick",
+      since:   Date.now(),
+    });
+  });
+
+  // Watch the presence list and update header counter
+  onValue(ref(db, "tracker/presence"), snap => {
+    const sessions = snap.val() || {};
+    const users = Object.values(sessions);
+    const count = users.length;
+    const names = [...new Set(users.map(u => u.name))].join(", ");
+
+    const el = document.getElementById("hdr-online");
+    if (el) {
+      el.textContent = "👥 " + count + (count === 1 ? " user" : " users");
+      el.title = count + " active: " + (names || "—");
+    }
+  });
 }
 
 function syncHeader() {
