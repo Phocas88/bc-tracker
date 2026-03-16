@@ -12,7 +12,7 @@
 :root{
   --bg:#0b0d13;--surface:#13161f;--card:#191c28;--border:#252a3a;
   --accent:#f0a500;--green:#1fd480;--red:#ff4d4d;--purple:#a78bfa;
-  --bealls:#f472b6;--sjl:#60a5fa;--text:#e6e8f0;--muted:#5a6080;
+  --bealls:#f472b6;--sjl:#60a5fa;--ka:#34d399;--text:#e6e8f0;--muted:#5a6080;
   --font:'Barlow Condensed',sans-serif;--body:'Barlow',sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -96,14 +96,14 @@ header{background:var(--surface);border-bottom:2px solid var(--accent);padding:1
 /* Badges */
 .badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:.75rem;font-weight:700;border:1px solid;white-space:nowrap}
 .b-bealls{background:rgba(244,114,182,.12);border-color:var(--bealls);color:var(--bealls)}
-.b-sjl{background:rgba(96,165,250,.12);border-color:var(--sjl);color:var(--sjl)}
+.b-sjl{background:rgba(96,165,250,.12);border-color:var(--sjl);color:var(--sjl)}.b-ka{background:rgba(52,211,153,.12);border-color:var(--ka);color:var(--ka)}
 .b-green{background:rgba(31,212,128,.12);border-color:var(--green);color:var(--green)}
 .b-purple{background:rgba(167,139,250,.12);border-color:var(--purple);color:var(--purple)}
 .b-amber{background:rgba(240,165,0,.12);border-color:var(--accent);color:var(--accent)}
 .b-red{background:rgba(255,77,77,.12);border-color:var(--red);color:var(--red)}
 
 /* KPI */
-.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.kpi-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px}
 .kpi{padding:16px 18px}
 .kpi-lbl{font-family:var(--font);font-size:.65rem;font-weight:700;letter-spacing:.12em;color:var(--muted);margin-bottom:4px}
 .kpi-val{font-family:var(--font);font-size:2rem;font-weight:900;line-height:1}
@@ -364,6 +364,36 @@ const ORDER_DATA = [
   {item:"B24916",desc:"NARROW BLUE SHELL CANDLE HOLDER",qty:504,customer:"SJL"},
   {item:"B25147",desc:"GLASS VOTIVES A/4",qty:192,customer:"SJL"},
   {item:"B25935",desc:"CRAB WAVE MELAMINE PLATTER",qty:264,customer:"SJL"},
+  // ── Key Account items ──────────────────────────────────────────────────────
+  {item:"20585",desc:"PINE WOOD WALL DECOR W/BOAT",qty:19,customer:"Key Account"},
+  {item:"20916",desc:"DRINK LIKE A FISH COASTERS S/4",qty:17,customer:"Key Account"},
+  {item:"B21263",desc:"7\" GLASS MARBLED SAILBOAT FIG",qty:2,customer:"Key Account"},
+  {item:"B21949",desc:"12.5\" GLASS TURQ. METTALIC BOTTLE VASE",qty:213,customer:"Key Account"},
+  {item:"B22054",desc:"19.65\" CERAMIC PLEICAN BELL DROP",qty:12,customer:"Key Account"},
+  {item:"B22224",desc:"METAL PATINA HEART W/TURTLES CHIME",qty:7,customer:"Key Account"},
+  {item:"B22378",desc:"LIGHTHOUSE BEACH SUGAR BOWL W/LID",qty:50,customer:"Key Account"},
+  {item:"B22379",desc:"LIGHTHOUSE BEACH CREAMER CUP",qty:31,customer:"Key Account"},
+  {item:"B22478",desc:"S/6 MINI GLASS GECKOS",qty:6,customer:"Key Account"},
+  {item:"B24435",desc:"GLASS CRAB FIG",qty:6,customer:"Key Account"},
+  {item:"B25009",desc:"MD STRIPE SHELL FIG",qty:56,customer:"Key Account"},
+  {item:"B25010",desc:"PATTERNED SHELL FIG",qty:56,customer:"Key Account"},
+  {item:"B25011",desc:"LG STRIPE SHELL FIG",qty:48,customer:"Key Account"},
+  {item:"B25548",desc:"BLUE SEA STAR FIGURINE",qty:4,customer:"Key Account"},
+  {item:"B25549",desc:"BLUE SAILBOAT FIGURINE",qty:6,customer:"Key Account"},
+  {item:"B25553",desc:"BLUE SEA STAR DISH",qty:4,customer:"Key Account"},
+  {item:"B25940",desc:"NAUTICAL OARS MELAMINE CUP",qty:449,customer:"Key Account"},
+  {item:"B25983",desc:"WHT BLU GRN CRAB HANGER A/3",qty:24,customer:"Key Account"},
+  {item:"B26336",desc:"STINGRAY ORNAMENT",qty:12,customer:"Key Account"},
+  {item:"B26343",desc:"BLUE MOTHER BABY TURTLE ORN",qty:12,customer:"Key Account"},
+  {item:"B26412",desc:"SEA TURTLE WIND CHIME",qty:4,customer:"Key Account"},
+  {item:"B26437",desc:"BLUECORAL GREEN BALL ORN W/SEA STAR A/3",qty:12,customer:"Key Account"},
+  {item:"B26469",desc:"FLAMINGO CAPIZ CHIME",qty:4,customer:"Key Account"},
+  {item:"B26470",desc:"MERMAID CAPIZ CHIME",qty:4,customer:"Key Account"},
+  {item:"B26474",desc:"JELLYFISH CAPIZ CHIME",qty:4,customer:"Key Account"},
+  {item:"B26494",desc:"SEA TURTLE WALL ART",qty:8,customer:"Key Account"},
+  {item:"B26499",desc:"MULRI SHOREBIRDS WALL ART",qty:6,customer:"Key Account"},
+  {item:"B26576",desc:"NAVY BEACH  BAGS A/3",qty:21,customer:"Key Account"},
+  {item:"B26605",desc:"TEAL/SALMON FISH ORN",qty:6,customer:"Key Account"},
   // ── Building 715 items ──────────────────────────────────────────────────
   {item:"B22624",desc:"PIRATE\'S BOOTY FLASK & CUP SET",qty:478,customer:"Building 715"},
   {item:"03243",desc:"RIP CURL WAVE GLASS ART",qty:343,customer:"Building 715"},
@@ -1049,7 +1079,7 @@ const ORDER_DATA = [
   {item:"20578",desc:"BROWN CAPIZ TURTLE",qty:155,customer:"Building 715"},
   {item:"20583",desc:"LARGE WIRE FISH",qty:5,customer:"Building 715"},
   {item:"20584",desc:"PINE WOOD WALL DECOR W/EGRET",qty:173,customer:"Building 715"},
-  {item:"20585",desc:"PINE WOOD WALL DECOR W/BOAT",qty:25,customer:"Building 715"},
+  {item:"20585",desc:"PINE WOOD WALL DECOR W/BOAT",qty:6,customer:"Building 715"},
   {item:"20586",desc:"PINE WOOD WALL DECOR W/PALMS",qty:1,customer:"Building 715"},
   {item:"20587",desc:"ORANGE LAMPAKANAY ANCHOR",qty:78,customer:"Building 715"},
   {item:"20588",desc:"BROWN BACBAC TURTLE",qty:5,customer:"Building 715"},
@@ -1197,7 +1227,7 @@ const ORDER_DATA = [
   {item:"20907",desc:"CITRUS APRON",qty:195,customer:"Building 715"},
   {item:"20913",desc:"ANCHOR MANAGEMENT TRINKET DISH",qty:7,customer:"Building 715"},
   {item:"20914",desc:"LADY/MERMAID TRINKET DISH",qty:778,customer:"Building 715"},
-  {item:"20916",desc:"DRINK LIKE A FISH COASTERS S/4",qty:117,customer:"Building 715"},
+  {item:"20916",desc:"DRINK LIKE A FISH COASTERS S/4",qty:100,customer:"Building 715"},
   {item:"20919",desc:"ACT LIKE A LADY WINE BAG",qty:182,customer:"Building 715"},
   {item:"20921",desc:"FLOWER 12\" X 18\" PILLOW",qty:440,customer:"Building 715"},
   {item:"20930",desc:"TURQ. CAPIZ BOX",qty:1,customer:"Building 715"},
@@ -1915,7 +1945,7 @@ const ORDER_DATA = [
   {item:"B22214",desc:"GLASS OMBRE DECORATIVE VASE TEAL/BLU MD",qty:67,customer:"Building 715"},
   {item:"B22216",desc:"GLASS OMBRE DECORATIVE VASE TEAL/BLU SM",qty:1,customer:"Building 715"},
   {item:"B22220",desc:"METAL PATINA HEART W/TURTLES ORNAMENT",qty:369,customer:"Building 715"},
-  {item:"B22224",desc:"METAL PATINA HEART W/TURTLES CHIME",qty:94,customer:"Building 715"},
+  {item:"B22224",desc:"METAL PATINA HEART W/TURTLES CHIME",qty:87,customer:"Building 715"},
   {item:"B22226",desc:"METAL HAND-PAINTED YEL FISH BELL CHIME",qty:51,customer:"Building 715"},
   {item:"B22228",desc:"METAL HAND-PAINTED GREEN FISH BELL CHIME",qty:240,customer:"Building 715"},
   {item:"B22230",desc:"METAL HAND-PAINTED MULTI SHELL BELL DROP",qty:111,customer:"Building 715"},
@@ -1992,7 +2022,7 @@ const ORDER_DATA = [
   {item:"B22426",desc:"CLEAR BLUE WHALE TAIL GLASS ART",qty:384,customer:"Building 715"},
   {item:"B22474",desc:"S/6 MINI MULTI TROPICAL GLASS FISH",qty:66,customer:"Building 715"},
   {item:"B22475",desc:"S/6 MINI MULTI FISH ON STAR STANDS",qty:6,customer:"Building 715"},
-  {item:"B22478",desc:"S/6 MINI GLASS GECKOS",qty:158,customer:"Building 715"},
+  {item:"B22478",desc:"S/6 MINI GLASS GECKOS",qty:152,customer:"Building 715"},
   {item:"B22479",desc:"MINI GLASS JUMPING FROG",qty:84,customer:"Building 715"},
   {item:"B22484",desc:"MINI TURQ GLASS NARWHAL FIGURINE",qty:559,customer:"Building 715"},
   {item:"B22485",desc:"MINI PURPLE GLASS NARWHAL FIGURINE",qty:62,customer:"Building 715"},
@@ -2106,8 +2136,8 @@ const ORDER_DATA = [
   {item:"B22369",desc:"LOVING CATS SHOT GLASS",qty:1008,customer:"Building 715"},
   {item:"B22375",desc:"4X6 CRABBY BEACH FRAME",qty:111,customer:"Building 715"},
   {item:"B22377",desc:"LIGHTHOUSE BEACH TABLE SITTER",qty:192,customer:"Building 715"},
-  {item:"B22378",desc:"LIGHTHOUSE BEACH SUGAR BOWL W/LID",qty:47,customer:"Building 715"},
-  {item:"B22379",desc:"LIGHTHOUSE BEACH CREAMER CUP",qty:467,customer:"Building 715"},
+  {item:"B22378",desc:"LIGHTHOUSE BEACH SUGAR BOWL W/LID",qty:0,customer:"Building 715"},
+  {item:"B22379",desc:"LIGHTHOUSE BEACH CREAMER CUP",qty:436,customer:"Building 715"},
   {item:"B22380",desc:"LIGHTHOUSE BEACH TRINKET DISH",qty:138,customer:"Building 715"},
   {item:"B22381",desc:"LIGHTHOUSE BEACH LONG DISH",qty:279,customer:"Building 715"},
   {item:"B22440",desc:"BLUE/ PURPLE LED METAL FISH ACCENT",qty:12,customer:"Building 715"},
@@ -2433,7 +2463,7 @@ const ORDER_DATA = [
   {item:"B24304",desc:"SCALE FISH ORNAMENT",qty:5,customer:"Building 715"},
   {item:"B24310",desc:"STRIPES LIGHTHOUSE W/LIGHTS A/3",qty:6,customer:"Building 715"},
   {item:"B24311",desc:"LIGHTHOUSE W/LIGHTS A/3",qty:6,customer:"Building 715"},
-  {item:"B24435",desc:"GLASS CRAB FIG",qty:78,customer:"Building 715"},
+  {item:"B24435",desc:"GLASS CRAB FIG",qty:72,customer:"Building 715"},
   {item:"B24436",desc:"GLASS BLOW FISH FIG",qty:89,customer:"Building 715"},
   {item:"B24437",desc:"GLASS OCTOPUS ON BALL FIG",qty:92,customer:"Building 715"},
   {item:"B24438",desc:"GLASS OCTOPUS FIG",qty:104,customer:"Building 715"},
@@ -2642,9 +2672,9 @@ const ORDER_DATA = [
   {item:"B24641",desc:"Day/Reel Lake License Plate A/2",qty:718,customer:"Building 715"},
   {item:"B24998",desc:"STRIPE FISH S&P S/2",qty:264,customer:"Building 715"},
   {item:"B25002",desc:"STRIPE FISH FIG",qty:1,customer:"Building 715"},
-  {item:"B25009",desc:"MD STRIPE SHELL FIG",qty:198,customer:"Building 715"},
-  {item:"B25010",desc:"PATTERNED SHELL FIG",qty:256,customer:"Building 715"},
-  {item:"B25011",desc:"LG STRIPE SHELL FIG",qty:219,customer:"Building 715"},
+  {item:"B25009",desc:"MD STRIPE SHELL FIG",qty:142,customer:"Building 715"},
+  {item:"B25010",desc:"PATTERNED SHELL FIG",qty:200,customer:"Building 715"},
+  {item:"B25011",desc:"LG STRIPE SHELL FIG",qty:171,customer:"Building 715"},
   {item:"B24612",desc:"BEACH SCENE MAGENTS A/3",qty:144,customer:"Building 715"},
   {item:"B24614",desc:"TAILGATE MAGNETS A/3",qty:10,customer:"Building 715"},
   {item:"B24617",desc:"SEA TURTLE FIG A/6",qty:1241,customer:"Building 715"},
@@ -2856,11 +2886,11 @@ const ORDER_DATA = [
   {item:"B25543",desc:"WOODEN FISH DROP",qty:71,customer:"Building 715"},
   {item:"B25545",desc:"WOODEN SEA TURTLE DROP",qty:296,customer:"Building 715"},
   {item:"B25546",desc:"WOODEN SEA STAR DROP",qty:406,customer:"Building 715"},
-  {item:"B25548",desc:"BLUE SEA STAR FIGURINE",qty:377,customer:"Building 715"},
-  {item:"B25549",desc:"BLUE SAILBOAT FIGURINE",qty:273,customer:"Building 715"},
+  {item:"B25548",desc:"BLUE SEA STAR FIGURINE",qty:373,customer:"Building 715"},
+  {item:"B25549",desc:"BLUE SAILBOAT FIGURINE",qty:267,customer:"Building 715"},
   {item:"B25551",desc:"BLUE SEA TURTLE FIGURINE",qty:90,customer:"Building 715"},
   {item:"B25552",desc:"BLUE SHELL DISH",qty:264,customer:"Building 715"},
-  {item:"B25553",desc:"BLUE SEA STAR DISH",qty:270,customer:"Building 715"},
+  {item:"B25553",desc:"BLUE SEA STAR DISH",qty:266,customer:"Building 715"},
   {item:"B25555",desc:"ANCHOR WALL DECOR",qty:312,customer:"Building 715"},
   {item:"B25556",desc:"FISH CUTTINGBOARD",qty:4,customer:"Building 715"},
   {item:"B25557",desc:"SEA TURTLE CUTTING BOARD",qty:2,customer:"Building 715"},
@@ -2961,7 +2991,7 @@ const ORDER_DATA = [
   {item:"B26016",desc:"TRIPLE SWMSUIT 4X6 FRAME",qty:184,customer:"Building 715"},
   {item:"B25921",desc:"VILANO BAY SLUMP GLASS TRAY",qty:134,customer:"Building 715"},
   {item:"B25939",desc:"BLUE SAND DOLLAR MELAMINE SERVER",qty:487,customer:"Building 715"},
-  {item:"B25940",desc:"NAUTICAL OARS MELAMINE CUP",qty:449,customer:"Building 715"},
+  {item:"B25940",desc:"NAUTICAL OARS MELAMINE CUP",qty:0,customer:"Building 715"},
   {item:"B25864",desc:"CORAL & BISQUE SHELL BOWL",qty:216,customer:"Building 715"},
   {item:"B25865",desc:"CORAL & BISQUE URCHIN BOX W/WHALE ON LID",qty:19,customer:"Building 715"},
   {item:"B25867",desc:"CORAL & BISQUE SEA STAR FIG",qty:82,customer:"Building 715"},
@@ -2969,7 +2999,7 @@ const ORDER_DATA = [
   {item:"B25871",desc:"CORAL & BISQUE TURTLE FIG",qty:334,customer:"Building 715"},
   {item:"B25873",desc:"CORAL & BISQUE SHELL S&P S/2",qty:144,customer:"Building 715"},
   {item:"B25874",desc:"CORAL & BISQUE OCTOPUS MUG",qty:139,customer:"Building 715"},
-  {item:"B25983",desc:"WHT BLU GRN CRAB HANGER A/3",qty:672,customer:"Building 715"},
+  {item:"B25983",desc:"WHT BLU GRN CRAB HANGER A/3",qty:648,customer:"Building 715"},
   {item:"B25984",desc:"WHT BLU GRN LIGHTHOUSE HANGER A/3",qty:607,customer:"Building 715"},
   {item:"B25986",desc:"WHT BLU GRN ANCHOR BOTTLE OPENER A/3",qty:84,customer:"Building 715"},
   {item:"B25989",desc:"WHT BLU GRN ANCHOR HANGER A/3",qty:744,customer:"Building 715"},
@@ -3120,14 +3150,14 @@ const ORDER_DATA = [
   {item:"B26333",desc:"SWIMMING SEA LION ORNAMENT",qty:300,customer:"Building 715"},
   {item:"B26334",desc:"MOTHER & BABY WHALE ORN",qty:344,customer:"Building 715"},
   {item:"B26335",desc:"SEA LION ORNAMENT",qty:237,customer:"Building 715"},
-  {item:"B26336",desc:"STINGRAY ORNAMENT",qty:438,customer:"Building 715"},
+  {item:"B26336",desc:"STINGRAY ORNAMENT",qty:426,customer:"Building 715"},
   {item:"B26337",desc:"TEAL TROPICAL FISH ORN",qty:648,customer:"Building 715"},
   {item:"B26338",desc:"BLUE TROPICAL FISH ORN",qty:500,customer:"Building 715"},
   {item:"B26339",desc:"SEAGULL ORNAMENT",qty:504,customer:"Building 715"},
   {item:"B26340",desc:"SEAHORSE ORN A/3",qty:675,customer:"Building 715"},
   {item:"B26341",desc:"SM ORCA WHALE ORN",qty:991,customer:"Building 715"},
   {item:"B26342",desc:"GREEN MOTHER BABY TURTLE ORN",qty:657,customer:"Building 715"},
-  {item:"B26343",desc:"BLUE MOTHER BABY TURTLE ORN",qty:322,customer:"Building 715"},
+  {item:"B26343",desc:"BLUE MOTHER BABY TURTLE ORN",qty:310,customer:"Building 715"},
   {item:"B26344",desc:"SEASTAR ORNAMENT",qty:2280,customer:"Building 715"},
   {item:"B26410",desc:"SWORDFISH ORN",qty:504,customer:"Building 715"},
   {item:"B26411",desc:"FLAMINGO ORN",qty:504,customer:"Building 715"},
@@ -3147,7 +3177,7 @@ const ORDER_DATA = [
   {item:"B26597",desc:"TEAL BALL ORN W/SEA STAR CHARM",qty:576,customer:"Building 715"},
   {item:"B26598",desc:"TAN BALL ORN W/ANCHOR CHARM",qty:612,customer:"Building 715"},
   {item:"B26604",desc:"TEAL BALL ORN W/SEA STAR",qty:288,customer:"Building 715"},
-  {item:"B26605",desc:"TEAL/SALMON FISH ORN",qty:612,customer:"Building 715"},
+  {item:"B26605",desc:"TEAL/SALMON FISH ORN",qty:606,customer:"Building 715"},
   {item:"B26606",desc:"BROWN STRIPE FISH ORN",qty:423,customer:"Building 715"},
   {item:"B26446",desc:"GLASS SAND DOLLARS A/4",qty:576,customer:"Building 715"},
   {item:"B26447",desc:"GLASS JELLYFISH PURPLE",qty:44,customer:"Building 715"},
@@ -3160,11 +3190,11 @@ const ORDER_DATA = [
   {item:"B26607",desc:"BLUE FROSTED GLASS BOWL",qty:202,customer:"Building 715"},
   {item:"B26608",desc:"SMALL BLUE FROSTED GLASS VASE",qty:133,customer:"Building 715"},
   {item:"B26609",desc:"LARGE BLUE FROSTED GLASS VASE",qty:211,customer:"Building 715"},
-  {item:"B26494",desc:"SEA TURTLE WALL ART",qty:99,customer:"Building 715"},
+  {item:"B26494",desc:"SEA TURTLE WALL ART",qty:91,customer:"Building 715"},
   {item:"B26495",desc:"EGRET WALL ART",qty:176,customer:"Building 715"},
   {item:"B26496",desc:"SEAHORSE & SEA STAR WALL ART",qty:231,customer:"Building 715"},
   {item:"B26497",desc:"MANATEE WALL ART",qty:115,customer:"Building 715"},
-  {item:"B26499",desc:"MULRI SHOREBIRDS WALL ART",qty:178,customer:"Building 715"},
+  {item:"B26499",desc:"MULRI SHOREBIRDS WALL ART",qty:172,customer:"Building 715"},
   {item:"B26500",desc:"SINGLE SHOREBIRD WALL ART",qty:214,customer:"Building 715"},
   {item:"B26476",desc:"OCTOPUS BOOKENDS",qty:389,customer:"Building 715"},
   {item:"B26394",desc:"BLUE FAN SHELL ORN",qty:240,customer:"Building 715"},
@@ -3193,7 +3223,7 @@ const ORDER_DATA = [
   {item:"B26423",desc:"TAN SEAGULL FIG",qty:239,customer:"Building 715"},
   {item:"B26537",desc:"FLAMINGO MUG",qty:186,customer:"Building 715"},
   {item:"B26436",desc:"SHELL ORN GOLD SILVER ROSE GOLD A/3",qty:324,customer:"Building 715"},
-  {item:"B26437",desc:"BLUECORAL GREEN BALL ORN W/SEA STAR A/3",qty:297,customer:"Building 715"},
+  {item:"B26437",desc:"BLUECORAL GREEN BALL ORN W/SEA STAR A/3",qty:285,customer:"Building 715"},
   {item:"B26438",desc:"SEAHORSE ORN CLEAR BLUE CORAL A/3",qty:288,customer:"Building 715"},
   {item:"B26441",desc:"BLUE GLASS BALL W/NET ORN",qty:468,customer:"Building 715"},
   {item:"B26520",desc:"CRAB FIG NESTED SET",qty:323,customer:"Building 715"},
@@ -3244,12 +3274,12 @@ const ORDER_DATA = [
   {item:"B26516",desc:"MULTI ADIRONDACK CHAIRS WALL ART",qty:305,customer:"Building 715"},
   {item:"B26517",desc:"COLORFUL PELICAN WALL ART",qty:121,customer:"Building 715"},
   {item:"B26468",desc:"SEAHORSE CAPIZ CHIME",qty:117,customer:"Building 715"},
-  {item:"B26469",desc:"FLAMINGO CAPIZ CHIME",qty:102,customer:"Building 715"},
-  {item:"B26470",desc:"MERMAID CAPIZ CHIME",qty:62,customer:"Building 715"},
+  {item:"B26469",desc:"FLAMINGO CAPIZ CHIME",qty:98,customer:"Building 715"},
+  {item:"B26470",desc:"MERMAID CAPIZ CHIME",qty:58,customer:"Building 715"},
   {item:"B26471",desc:"SEA STAR CAPIZ CHIME",qty:355,customer:"Building 715"},
   {item:"B26472",desc:"STORK CAPIZ CHIME",qty:72,customer:"Building 715"},
   {item:"B26473",desc:"OCTOPUS CAPIZ CHIME",qty:104,customer:"Building 715"},
-  {item:"B26474",desc:"JELLYFISH CAPIZ CHIME",qty:51,customer:"Building 715"},
+  {item:"B26474",desc:"JELLYFISH CAPIZ CHIME",qty:47,customer:"Building 715"},
   {item:"B26480",desc:"SEA TURTLE COSMETIC BAG",qty:200,customer:"Building 715"},
   {item:"B26481",desc:"SEAHORSE & SEA STAR COSMETIC BAG",qty:208,customer:"Building 715"},
   {item:"B26478",desc:"OCEAN LIFE TOTE",qty:168,customer:"Building 715"},
@@ -3263,7 +3293,7 @@ const ORDER_DATA = [
   {item:"B26620",desc:"GLASS SEAHORSE ON METAL STAND",qty:4,customer:"Building 715"},
   {item:"B26579",desc:"SHELL COLLECTOR BAGS A/3",qty:582,customer:"Building 715"},
   {item:"B26573",desc:"TEAL BEACH  BAGS A/3",qty:648,customer:"Building 715"},
-  {item:"B26576",desc:"NAVY BEACH  BAGS A/3",qty:646,customer:"Building 715"},
+  {item:"B26576",desc:"NAVY BEACH  BAGS A/3",qty:625,customer:"Building 715"},
   {item:"B26627",desc:"BIRD/SHELL ORNAMENT",qty:6,customer:"Building 715"},
   {item:"B26628",desc:"BIRD/SHELL FIGURINE",qty:35,customer:"Building 715"},
   {item:"B26638",desc:"PALM TREE ORNAMENT",qty:6,customer:"Building 715"},
@@ -3278,7 +3308,7 @@ const ORDER_DATA = [
   {item:"B26662",desc:"CLOWNFISH ORNAMENT",qty:192,customer:"Building 715"},
   {item:"B26414",desc:"SEA STAR WIND CHIME",qty:126,customer:"Building 715"},
   {item:"B26413",desc:"SHELL WIND CHIME",qty:119,customer:"Building 715"},
-  {item:"B26412",desc:"SEA TURTLE WIND CHIME",qty:170,customer:"Building 715"},
+  {item:"B26412",desc:"SEA TURTLE WIND CHIME",qty:166,customer:"Building 715"},
   {item:"B26687",desc:"DRIFTWOOD SHELL DROP ORN",qty:480,customer:"Building 715"},
   {item:"B26688",desc:"DRIFTWOOD SAND DOLLAR DROP ORN",qty:480,customer:"Building 715"},
   {item:"B26689",desc:"DRIFTWOOD SEAHORSE DROP ORN",qty:486,customer:"Building 715"},
@@ -4040,7 +4070,7 @@ function renderManager() {
   const mc = document.getElementById("main-content");
   if (!mc) return;
 
-  let totalOrd=0, totalFill=0, bOrd=0, bFill=0, sOrd=0, sFill=0;
+  let totalOrd=0, totalFill=0, bOrd=0, bFill=0, sOrd=0, sFill=0, kaOrd=0, kaFill=0;
   let b715Ord=0, b715Fill=0;
 
   for (const row of ORDER_DATA) {
@@ -4053,6 +4083,7 @@ function renderManager() {
     const f = Math.min((liveData.picks[k] || {})[row.customer] || 0, row.qty);
     totalOrd += row.qty; totalFill += f;
     if (row.customer === "Beall's") { bOrd += row.qty; bFill += f; }
+    else if (row.customer === "Key Account") { kaOrd += row.qty; kaFill += f; }
     else { sOrd += row.qty; sFill += f; }
   }
 
@@ -4067,6 +4098,7 @@ function renderManager() {
   const pct    = totalOrd ? Math.round(totalFill / totalOrd * 100) : 0;
   const bPct   = bOrd ? Math.round(bFill / bOrd * 100) : 0;
   const sPct   = sOrd ? Math.round(sFill / sOrd * 100) : 0;
+  const kaPct  = kaOrd ? Math.round(kaFill / kaOrd * 100) : 0;
   const b715Pct = b715Ord ? Math.min(100, Math.round(b715Fill / b715Ord * 100)) : 0;
 
   let html = '<div class="main">';
@@ -4076,6 +4108,7 @@ function renderManager() {
   html += kpi("OVERALL", pct + "%", totalFill.toLocaleString() + " / " + totalOrd.toLocaleString() + " units", "var(--accent)");
   html += kpi("BEALL'S", bPct + "%", bFill.toLocaleString() + " / " + bOrd.toLocaleString(), "var(--bealls)");
   html += kpi("SJL", sPct + "%", sFill.toLocaleString() + " / " + sOrd.toLocaleString(), "var(--sjl)");
+  html += kpi("KEY ACCOUNT", kaPct + "%", kaFill.toLocaleString() + " / " + kaOrd.toLocaleString(), "var(--ka)");
   html += kpi("→ BLDG 715", b715Pct + "%", b715Fill.toLocaleString() + " / " + b715Ord.toLocaleString() + " units", "var(--purple)");
   html += '</div>';
 
@@ -4246,6 +4279,7 @@ function buildOrdersTable() {
   // ── Filters
   if (filterKey === "bealls")   rows = rows.filter(r => r.customer === "Beall's");
   else if (filterKey === "sjl") rows = rows.filter(r => r.customer === "SJL");
+  else if (filterKey === "ka")   rows = rows.filter(r => r.customer === "Key Account");
   else if (filterKey === "b715") rows = rows.filter(r => r.customer === "Building 715");
   else if (filterKey === "done")    rows = rows.filter(r => r.filled >= r.qty && r.qty > 0);
   else if (filterKey === "pending") rows = rows.filter(r => r.filled < r.qty);
@@ -4265,6 +4299,7 @@ function buildOrdersTable() {
     {f:"all",     lbl:"All"},
     {f:"bealls",  lbl:"Beall's"},
     {f:"sjl",     lbl:"SJL"},
+    {f:"ka",      lbl:"Key Account"},
     {f:"b715",    lbl:"→ 715"},
     {f:"done",    lbl:"✓ Done"},
     {f:"pending", lbl:"Pending"},
@@ -4299,6 +4334,8 @@ function buildOrdersTable() {
       const is715 = r.customer === "Building 715";
       const custBadge = is715
         ? '<span class="badge b-purple">→ 715</span>'
+        : r.customer === "Key Account"
+        ? '<span class="badge b-ka">Key Account</span>'
         : '<span class="badge ' + (r.customer==="Beall's"?"b-bealls":"b-sjl") + '">' + esc(r.customer) + '</span>';
 
       // Aggregate pallets for this item
