@@ -4141,6 +4141,23 @@ function attachManagerEvents() {
   if (wSel) wSel.onchange = () => { actFilterWorker = wSel.value; refreshSubTab(); };
   const cSel = document.getElementById("act-cust-sel");
   if (cSel) cSel.onchange = () => { actFilterCust = cSel.value; refreshSubTab(); };
+
+  // Order row expand/collapse on click
+  document.querySelectorAll("tr.order-row").forEach(row => {
+    row.onclick = () => {
+      const item = row.dataset.item;
+      const detailRow = document.querySelector("tr.order-detail-row[data-item='" + item.replace(/'/g,"\'") + "']");
+      if (!detailRow) return;
+      const isOpen = detailRow.style.display !== "none";
+      // Close all open detail rows first
+      document.querySelectorAll("tr.order-detail-row").forEach(r => r.style.display = "none");
+      document.querySelectorAll("tr.order-row").forEach(r => r.style.background = "");
+      if (!isOpen) {
+        detailRow.style.display = "";
+        row.style.background = "var(--surface)";
+      }
+    };
+  });
 }
 
 function kpi(label, val, sub, color) {
@@ -4153,16 +4170,42 @@ function kpi(label, val, sub, color) {
 
 // ─── Orders table ────────────────────────────────────────────
 function buildOrdersTable() {
-  let rows = ORDER_DATA.filter(row => row.customer !== "Building 715").map(row => {
+  // ── Build pallet index: itemCode -> [{palletId, dest, qty, worker, ts}]
+  const palletIndex = {};
+  for (const [pid, pdata] of Object.entries(liveData.pallets)) {
+    for (const it of Object.values(pdata.items || {})) {
+      const code = it.item.toUpperCase();
+      if (!palletIndex[code]) palletIndex[code] = [];
+      palletIndex[code].push({
+        pid, dest: pdata.dest || "", qty: it.qty || 1,
+        worker: it.worker || "", ts: it.ts || 0, customer: it.customer || ""
+      });
+    }
+  }
+
+  // ── Build rows from ORDER_DATA (all customers including Building 715)
+  let rows = ORDER_DATA.map(row => {
     const k = row.item.toUpperCase();
-    const filled = Math.min((liveData.picks[k] || {})[row.customer] || 0, row.qty);
-    const b715   = (liveData.picks[k] || {})["_715"] || 0;
-    const pct    = row.qty > 0 ? Math.min(100, Math.round(filled / row.qty * 100)) : 100;
-    return { ...row, k, filled, b715, pct, remaining: Math.max(0, row.qty - filled) };
+    const pallets = palletIndex[k] || [];
+    // filled = sum of qty on pallets matching this customer destination
+    let filled = 0;
+    for (const p of pallets) {
+      const pCust = p.customer;
+      if (row.customer === "Building 715") {
+        if (p.dest && p.dest.includes("715")) filled += p.qty;
+      } else {
+        if (pCust === row.customer) filled += p.qty;
+      }
+    }
+    filled = Math.min(filled, row.qty);
+    const pct = row.qty > 0 ? Math.min(100, Math.round(filled / row.qty * 100)) : 100;
+    return { ...row, k, filled, pct, remaining: Math.max(0, row.qty - filled), pallets };
   });
 
-  if (filterKey === "bealls")  rows = rows.filter(r => r.customer === "Beall's");
-  else if (filterKey === "sjl")     rows = rows.filter(r => r.customer === "SJL");
+  // ── Filters
+  if (filterKey === "bealls")   rows = rows.filter(r => r.customer === "Beall's");
+  else if (filterKey === "sjl") rows = rows.filter(r => r.customer === "SJL");
+  else if (filterKey === "b715") rows = rows.filter(r => r.customer === "Building 715");
   else if (filterKey === "done")    rows = rows.filter(r => r.filled >= r.qty && r.qty > 0);
   else if (filterKey === "pending") rows = rows.filter(r => r.filled < r.qty);
 
@@ -4181,27 +4224,29 @@ function buildOrdersTable() {
     {f:"all",     lbl:"All"},
     {f:"bealls",  lbl:"Beall's"},
     {f:"sjl",     lbl:"SJL"},
+    {f:"b715",    lbl:"→ 715"},
     {f:"done",    lbl:"✓ Done"},
     {f:"pending", lbl:"Pending"},
   ];
 
   let html = '<div class="flex center gap10 mb12 wrap">';
-  html += '<input id="tbl-search" class="inp inp-sm" placeholder="🔍 Search..." value="' + esc(searchStr) + '" style="width:220px">';
+  html += '<input id="tbl-search" class="inp inp-sm" placeholder="🔍 Search item # or description..." value="' + esc(searchStr) + '" style="width:260px">';
   html += '<div class="flex gap8 wrap">';
   for (const f of filters) {
-    html += '<button class="btn btn-outline btn-sm filter-btn' + (filterKey===f.f?" active":"") +
-      '" data-f="' + f.f + '" style="border-radius:20px;' + (filterKey===f.f?"border-color:var(--accent);color:var(--accent)":"") + '">' + f.lbl + '</button>';
+    const active = filterKey === f.f;
+    html += '<button class="btn btn-outline btn-sm filter-btn' + (active?" active":"") +
+      '" data-f="' + f.f + '" style="border-radius:20px;' + (active?"border-color:var(--accent);color:var(--accent)":"") + '">' + f.lbl + '</button>';
   }
   html += '</div></div>';
 
   const cols = [
     {col:"item",lbl:"Item #"},{col:"desc",lbl:"Description"},{col:"customer",lbl:"Customer"},
-    {col:"qty",lbl:"Ordered"},{col:"filled",lbl:"Filled"},{col:"b715",lbl:"→ 715"},{col:"pct",lbl:"Progress"}
+    {col:"qty",lbl:"Ordered"},{col:"filled",lbl:"Filled"},{col:"remaining",lbl:"Remaining"},{col:"pct",lbl:"Progress"}
   ];
 
   html += '<div class="tbl-wrap"><table><thead><tr>';
-  for (const c of cols) {
-    html += '<th data-col="' + c.col + '">' + c.lbl + (sortCol===c.col?(sortAsc?" ↑":" ↓"):"") + '</th>';
+  for (const col of cols) {
+    html += '<th data-col="' + col.col + '">' + col.lbl + (sortCol===col.col?(sortAsc?" ↑":" ↓"):"") + '</th>';
   }
   html += '</tr></thead><tbody>';
 
@@ -4210,20 +4255,61 @@ function buildOrdersTable() {
   } else {
     for (const r of rows) {
       const done = r.filled >= r.qty && r.qty > 0;
-      html += '<tr>' +
+      const is715 = r.customer === "Building 715";
+      const custBadge = is715
+        ? '<span class="badge b-purple">→ 715</span>'
+        : '<span class="badge ' + (r.customer==="Beall's"?"b-bealls":"b-sjl") + '">' + esc(r.customer) + '</span>';
+
+      // Aggregate pallets for this item
+      const palletsSummary = r.pallets.length
+        ? r.pallets.map(p => '<span class="item-tag" style="font-size:.7rem;cursor:default" title="' +
+            esc(p.worker) + ' · ' + new Date(p.ts).toLocaleString() + '">🪟' + esc(p.pid) + ' ×' + p.qty + '</span>').join("")
+        : '<span style="font-size:.7rem;color:var(--muted)">not palletized yet</span>';
+
+      html += '<tr class="order-row" data-item="' + esc(r.item) + '" style="cursor:pointer">' +
         '<td style="font-family:var(--font);font-weight:700;color:var(--accent)">' + esc(r.item) + '</td>' +
         '<td style="font-size:.78rem;color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(r.desc) + '">' + esc(r.desc) + '</td>' +
-        '<td><span class="badge ' + (r.customer==="Beall's"?"b-bealls":"b-sjl") + '">' + esc(r.customer) + '</span></td>' +
+        '<td>' + custBadge + '</td>' +
         '<td style="text-align:right">' + r.qty + '</td>' +
         '<td style="text-align:right;color:var(--green);font-weight:600">' + r.filled + '</td>' +
-        '<td style="text-align:right;color:var(--purple)">' + r.b715 + '</td>' +
+        '<td style="text-align:right;color:' + (r.remaining>0?"var(--accent)":"var(--muted)") + '">' + r.remaining + '</td>' +
         '<td><div class="flex center gap8"><div class="prog"><div class="prog-fill" style="width:' + r.pct + '%;background:' + (done?"var(--purple)":"var(--green)") + '"></div></div><span style="font-size:.72rem;color:var(--muted)">' + r.pct + '%</span></div></td>' +
         '</tr>';
+
+      // Expandable detail row (hidden by default)
+      html += '<tr class="order-detail-row" data-item="' + esc(r.item) + '" style="display:none">' +
+        '<td colspan="7" style="background:var(--surface);padding:10px 16px;border-bottom:2px solid var(--border)">' +
+        '<div style="font-size:.72rem;color:var(--muted);font-family:var(--font);font-weight:700;letter-spacing:.08em;margin-bottom:8px">PALLETS CONTAINING ' + esc(r.item) + '</div>' +
+        '<div class="flex wrap gap8" style="margin-bottom:8px">' + palletsSummary + '</div>';
+
+      // Detailed pallet breakdown table
+      if (r.pallets.length) {
+        html += '<table style="width:100%;font-size:.75rem;border-collapse:collapse;margin-top:4px">' +
+          '<thead><tr style="background:var(--card)">' +
+          '<th style="padding:4px 10px;text-align:left;color:var(--muted);font-size:.65rem">PALLET</th>' +
+          '<th style="padding:4px 10px;text-align:left;color:var(--muted);font-size:.65rem">DESTINATION</th>' +
+          '<th style="padding:4px 10px;text-align:right;color:var(--muted);font-size:.65rem">QTY</th>' +
+          '<th style="padding:4px 10px;text-align:left;color:var(--muted);font-size:.65rem">WORKER</th>' +
+          '<th style="padding:4px 10px;text-align:left;color:var(--muted);font-size:.65rem">TIME</th>' +
+          '</tr></thead><tbody>';
+        for (const p of r.pallets) {
+          html += '<tr>' +
+            '<td style="padding:4px 10px;font-family:var(--font);font-weight:700;color:var(--accent)">' + esc(p.pid) + '</td>' +
+            '<td style="padding:4px 10px;color:var(--muted)">' + esc(p.dest) + '</td>' +
+            '<td style="padding:4px 10px;text-align:right;font-weight:700">×' + p.qty + '</td>' +
+            '<td style="padding:4px 10px;color:var(--muted)">' + esc(p.worker) + '</td>' +
+            '<td style="padding:4px 10px;color:var(--muted)">' + new Date(p.ts).toLocaleString() + '</td>' +
+            '</tr>';
+        }
+        html += '</tbody></table>';
+      }
+      html += '</td></tr>';
     }
   }
   html += '</tbody></table></div>';
   return html;
 }
+
 
 // ─── Pallets view ─────────────────────────────────────────────
 function buildPalletsView() {
