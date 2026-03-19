@@ -4668,19 +4668,19 @@ function showReassignModal(logKey, itemCode, palletId, qty, currentCust) {
 }
 
 async function doReassignEntry(logKey, itemCode, palletId, qty, oldCust, newCust) {
+  const newCustField = newCust === "Building 715" ? "715" : newCust;
+  const newDest = newCust === "Building 715" ? "Building 715" : "Order: " + newCust;
+
   const updates = {};
 
-  // 1. Update the log entry (customer label for activity feed)
-  const newDest  = newCust === "Building 715" ? "Building 715" : "Order: " + newCust;
-  const newCustField = newCust === "Building 715" ? "715" : newCust;
-  const newType  = newCust === "Building 715" ? "b715" : "order";
+  // Update log entry if we have the key
   if (logKey) {
     updates["tracker/log/" + logKey + "/customer"] = newCustField;
-    updates["tracker/log/" + logKey + "/dest"]     = newDest;
-    updates["tracker/log/" + logKey + "/type"]     = newType;
+    updates["tracker/log/" + logKey + "/dest"] = newDest;
+    updates["tracker/log/" + logKey + "/type"] = newCust === "Building 715" ? "b715" : "order";
   }
 
-  // 2. Update the pallet item(s) that match this entry
+  // Update all pallet items matching this item code on this pallet
   const pdata = liveData.pallets[palletId];
   if (pdata) {
     for (const [k, it] of Object.entries(pdata.items || {})) {
@@ -4690,56 +4690,48 @@ async function doReassignEntry(logKey, itemCode, palletId, qty, oldCust, newCust
     }
   }
 
-  // 3. Recalculate picks counters for this item from scratch
-  // Simulate the new pallet state
-  const tempPallets = JSON.parse(JSON.stringify(liveData.pallets));
-  if (tempPallets[palletId]) {
-    for (const k of Object.keys(tempPallets[palletId].items || {})) {
-      if (tempPallets[palletId].items[k].item === itemCode) {
-        tempPallets[palletId].items[k].customer = newCustField;
-      }
-    }
-  }
+  // Recalculate picks for this item from scratch across all pallets
+  // Build a simulated copy of pallets with the change applied
+  const allSums = {}; // "customerField" -> total qty
 
-  // Sum from temp state
-  const sums = {};
-  for (const pd of Object.values(tempPallets)) {
+  for (const [pid, pd] of Object.entries(liveData.pallets)) {
     for (const it of Object.values(pd.items || {})) {
       if (it.item !== itemCode) continue;
-      const cust = it.customer || "715";
-      sums[cust] = (sums[cust] || 0) + (it.qty || 1);
+      // Use the new customer for matching items on this pallet
+      let cust = it.customer || "715";
+      if (pid === palletId && it.item === itemCode) cust = newCustField;
+      allSums[cust] = (allSums[cust] || 0) + (it.qty || 1);
     }
   }
 
-  // Zero out old picks for this item, then set new values
-  const oldCustField = oldCust === "Building 715" ? "715" : oldCust;
-  const allCusts = new Set([
-    ...Object.keys((liveData.picks[itemCode] || {})),
-    oldCustField, newCustField
-  ]);
-  for (const cust of allCusts) {
-    // cust from liveData.picks keys: "_715", "Beall's", "SJL", "Key Account"
-    // sums keys from pallet item.customer: "715", "Beall's", "SJL", "Key Account"
-    const fk = (cust === "715" || cust === "_715") ? "_715" : cust;
-    const sumKey = (cust === "_715") ? "715" : cust; // map back to sums key
-    updates["tracker/picks/" + itemCode + "/" + fk] = sums[sumKey] || 0;
+  // Write corrected picks — zero out old then set new
+  const existingPicks = liveData.picks[itemCode] || {};
+  // Zero all existing pick keys for this item
+  for (const k of Object.keys(existingPicks)) {
+    updates["tracker/picks/" + itemCode + "/" + k] = 0;
   }
+  // Set correct values from sums
+  for (const [cust, total] of Object.entries(allSums)) {
+    const fk = (cust === "715") ? "_715" : cust;
+    updates["tracker/picks/" + itemCode + "/" + fk] = total;
+  }
+
+  console.log("[reassign] Sending updates:", JSON.stringify(updates));
 
   const btns = document.querySelectorAll(".reassign-choice");
   btns.forEach(b => { b.disabled = true; b.textContent = "SAVING..."; });
 
-  console.log("[reassign] updates:", JSON.stringify(updates, null, 2));
-
   try {
     await update(ref(db), updates);
     closeModal();
-    showToast("✓ " + itemCode + " reassigned: " + oldCust + " → " + newCust, "var(--green)");
+    showToast("✓ " + itemCode + " → " + newCust, "var(--green)");
   } catch(e) {
-    console.error("[reassign] Firebase error:", e);
-    showToast("Save failed: " + (e.message || e), "var(--red)");
+    console.error("[reassign] Error:", e);
+    showToast("Error: " + (e.message || String(e)), "var(--red)");
     btns.forEach(b => { b.disabled = false; b.textContent = b.dataset.cust; });
   }
 }
+
 
 function buildActivityFeed() {
   if (!liveData.log.length) return '<div class="empty">No activity yet</div>';
@@ -5299,7 +5291,8 @@ async function recalcAllCounts() {
 }
 
 function exportExcel() {
-  if (typeof XLSX === "undefined") {
+  const XLSX = window.XLSX;
+  if (typeof XLSX === "undefined" || !XLSX) {
     showToast("Excel library not loaded — refresh the page and try again", "var(--red)");
     return;
   }
