@@ -3352,6 +3352,7 @@ let subTab = "orders";      // orders | pallets | activity
 let managerUnlocked = false;
 let liveData = { picks: {}, pallets: {}, log: [] };
 let pendingScan = null;       // product waiting for pallet confirmation
+let custOverride = null;       // worker-selected customer override
 let palletLock = null;        // pallet ID scanned before product
 let palletChoice = null;      // null | 'join' | 'new'
 let saving = false;
@@ -3665,7 +3666,7 @@ function renderPick() {
     // Cancel (always present)
     const cancelBtn = document.getElementById("cancel-btn");
     if (cancelBtn) cancelBtn.onclick = () => {
-      pendingScan = null; palletLock = null; palletChoice = null; renderPick();
+      pendingScan = null; palletLock = null; palletChoice = null; custOverride = null; renderPick();
     };
 
     // Back → returns to join/new choice
@@ -3706,6 +3707,22 @@ function renderPick() {
       qtyInp.onfocus = function() { this.select(); };
     }
 
+    // Customer switch buttons
+    document.querySelectorAll(".cust-switch-btn").forEach(btn => {
+      btn.onclick = () => {
+        custOverride = btn.dataset.cust;
+        // Update pendingScan type to match new destination
+        if (custOverride === 'Building 715') {
+          pendingScan.type = 'b715';
+          pendingScan.destCustomer = null;
+        } else {
+          pendingScan.type = 'order';
+          pendingScan.destCustomer = custOverride;
+        }
+        renderPick();
+      };
+    });
+
     // Confirm
     const confBtn = document.getElementById("confirm-btn");
     if (confBtn) confBtn.onclick = doConfirm;
@@ -3721,24 +3738,49 @@ function buildConfirmCard() {
 
   let html = '<div class="' + cardClass + ' pop mb16">';
 
+  // Apply customer override if set
+  const effectiveCust = custOverride || p.destCustomer;
+  const effectiveIs715 = custOverride === 'Building 715' || (!custOverride && is715);
+  const dispColor = effectiveIs715 ? 'var(--purple)'
+    : effectiveCust === "Beall's" ? 'var(--bealls)'
+    : effectiveCust === 'Key Account' ? 'var(--ka)'
+    : 'var(--green)';
+  const dispText = effectiveIs715 ? '→ BUILDING 715' : '→ ORDER: ' + esc(effectiveCust || '');
+
   // Product info
-  html += '<div class="result-dest" style="color:' + destColor + '">' + destText + '</div>';
+  html += '<div class="result-dest" style="color:' + dispColor + '">' + dispText + '</div>';
   html += '<div style="margin-top:4px"><strong style="color:var(--accent)">' + esc(p.code) + '</strong>';
   if (p.desc) html += ' — ' + esc(p.desc);
   html += '</div>';
 
+  // ── Customer switcher ───────────────────────────────────────────────────
+  const allCusts = ['Building 715', "Beall's", 'SJL', 'Key Account'];
+  html += '<div style="margin-top:12px">';
+  html += '<div style="font-size:.65rem;color:var(--muted);font-family:var(--font);font-weight:700;letter-spacing:.08em;margin-bottom:6px">SWITCH DESTINATION:</div>';
+  html += '<div class="flex gap8 wrap">';
+  for (const cust of allCusts) {
+    const isActive = cust === (custOverride || (is715 ? 'Building 715' : p.destCustomer));
+    const btnColor = cust === 'Building 715' ? 'var(--purple)'
+      : cust === "Beall's" ? 'var(--bealls)'
+      : cust === 'Key Account' ? 'var(--ka)'
+      : 'var(--sjl)';
+    html += '<button class="cust-switch-btn btn btn-outline btn-sm" data-cust="' + esc(cust) + '" '
+      + 'style="border-color:' + btnColor + ';color:' + btnColor + ';' + (isActive ? 'background:' + btnColor + '20;font-weight:800;' : '') + '">' 
+      + esc(cust) + (isActive ? ' ✓' : '') + '</button>';
+  }
+  html += '</div></div>';
+
   // Order status badges
-  if (!is715 && p.code) {
-    const statuses = orderStatus(p.code);
-    if (statuses.length) {
-      html += '<div class="flex gap8 wrap" style="margin-top:10px">';
-      for (const s of statuses) {
-        const cls = s.customer === "Beall's" ? "b-bealls" : "b-sjl";
-        const lbl = s.remaining <= 0 ? "✓ DONE" : s.remaining + " left";
-        html += '<span class="badge ' + cls + '">' + esc(s.customer) + ': ' + lbl + '</span>';
-      }
-      html += '</div>';
+  const statuses = orderStatus(p.code);
+  if (statuses.length) {
+    html += '<div class="flex gap8 wrap" style="margin-top:10px">';
+    for (const s of statuses) {
+      if (s.customer === 'Building 715') continue;
+      const cls = s.customer === "Beall's" ? 'b-bealls' : s.customer === 'Key Account' ? 'b-ka' : 'b-sjl';
+      const lbl = s.remaining <= 0 ? '✓ DONE' : s.remaining + ' left';
+      html += '<span class="badge ' + cls + '">' + esc(s.customer) + ': ' + lbl + '</span>';
     }
+    html += '</div>';
   }
 
   // ── Step 2: Join or New choice ───────────────────────────────────────────
@@ -4046,6 +4088,7 @@ async function doConfirm() {
     pendingScan = null;
     palletLock = null;
     palletChoice = null;
+    custOverride = null;
     saving = false;
     renderPick();
     showToast("✓ " + qty + " unit" + (qty > 1 ? "s" : "") + " saved to " + pid, "var(--green)");
@@ -4144,6 +4187,7 @@ function renderManager() {
   document.getElementById("st-orders").onclick  = () => { subTab="orders";  refreshSubTab(); };
   document.getElementById("st-pallets").onclick = () => { subTab="pallets"; refreshSubTab(); };
   document.getElementById("st-activity").onclick= () => { subTab="activity";refreshSubTab(); };
+  document.getElementById("st-summary").onclick = () => { subTab="summary"; refreshSubTab(); };
   document.getElementById("export-btn").onclick = exportExcel;
   document.getElementById("recalc-btn").onclick = recalcAllCounts;
 
@@ -4155,13 +4199,15 @@ function refreshSubTab() {
   if (!el) return;
   document.querySelectorAll(".btn-tab").forEach(b => {
     b.classList.toggle("active",
-      (subTab==="orders" && b.id==="st-orders") ||
-      (subTab==="pallets" && b.id==="st-pallets") ||
-      (subTab==="activity" && b.id==="st-activity"));
+      (subTab==="orders"   && b.id==="st-orders")   ||
+      (subTab==="pallets"  && b.id==="st-pallets")  ||
+      (subTab==="activity" && b.id==="st-activity") ||
+      (subTab==="summary"  && b.id==="st-summary"));
   });
-  if (subTab==="orders")       el.innerHTML = buildOrdersTable();
-  else if (subTab==="pallets") el.innerHTML = buildPalletsView();
-  else                         el.innerHTML = buildActivityFeed();
+  if (subTab==="orders")        el.innerHTML = buildOrdersTable();
+  else if (subTab==="pallets")  el.innerHTML = buildPalletsView();
+  else if (subTab==="summary")  el.innerHTML = buildPalletSummary();
+  else                          el.innerHTML = buildActivityFeed();
   attachManagerEvents();
 }
 
@@ -4390,6 +4436,103 @@ function buildOrdersTable() {
 
 
 // ─── Pallets view ─────────────────────────────────────────────
+// ══════════════════════════════════════════════════════
+// PALLET SUMMARY — totals per customer
+// ══════════════════════════════════════════════════════
+function buildPalletSummary() {
+  const customers = ["Beall's", "SJL", "Key Account", "Building 715"];
+  const custKey = { "Beall's":"bealls", "SJL":"sjl", "Key Account":"ka", "Building 715":"purple" };
+  const custColor = { "Beall's":"var(--bealls)", "SJL":"var(--sjl)", "Key Account":"var(--ka)", "Building 715":"var(--purple)" };
+
+  // Aggregate pallet data per customer
+  const stats = {};
+  for (const cust of customers) {
+    stats[cust] = { pallets: [], totalPallets: 0, totalUnits: 0, items: {} };
+  }
+
+  for (const [pid, pdata] of Object.entries(liveData.pallets)) {
+    // Determine primary customer for this pallet
+    const dest = pdata.dest || "";
+    let cust = "Building 715";
+    if (dest.includes("Beall"))       cust = "Beall's";
+    else if (dest.includes("SJL"))    cust = "SJL";
+    else if (dest.includes("Key"))    cust = "Key Account";
+
+    const items = Object.values(pdata.items || {});
+    const units = items.reduce((s, it) => s + (it.qty || 1), 0);
+    if (!stats[cust]) stats[cust] = { pallets: [], totalPallets: 0, totalUnits: 0, items: {} };
+    stats[cust].pallets.push({ pid, units, created: pdata.created || 0 });
+    stats[cust].totalPallets++;
+    stats[cust].totalUnits += units;
+    for (const it of items) {
+      stats[cust].items[it.item] = (stats[cust].items[it.item] || 0) + (it.qty || 1);
+    }
+  }
+
+  // Grand totals
+  const grandPallets = Object.values(stats).reduce((s, st) => s + st.totalPallets, 0);
+  const grandUnits   = Object.values(stats).reduce((s, st) => s + st.totalUnits, 0);
+
+  let html = '';
+
+  // Grand total bar
+  html += '<div class="card p16 mb16" style="text-align:center">';
+  html += '<div style="font-family:var(--font);font-size:.7rem;font-weight:700;letter-spacing:.1em;color:var(--muted);margin-bottom:4px">TOTAL PALLETS BUILT</div>';
+  html += '<div style="font-family:var(--font);font-size:3rem;font-weight:900;color:var(--accent);line-height:1">' + grandPallets + '</div>';
+  html += '<div style="font-size:.82rem;color:var(--muted);margin-top:4px">' + grandUnits.toLocaleString() + ' total units palletized</div>';
+  html += '</div>';
+
+  // Per-customer cards grid
+  html += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:20px">';
+  for (const cust of customers) {
+    const st = stats[cust];
+    const color = custColor[cust];
+    const topPallets = [...st.pallets].sort((a,b)=>b.units-a.units).slice(0,5);
+    html += '<div class="card p16">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
+    html += '<span style="font-family:var(--font);font-size:.85rem;font-weight:800;color:' + color + '">' + esc(cust) + '</span>';
+    html += '<span class="badge b-' + custKey[cust] + '">' + st.totalPallets + ' pallets</span>';
+    html += '</div>';
+    html += '<div style="font-family:var(--font);font-size:2.2rem;font-weight:900;color:' + color + ';line-height:1">' + st.totalPallets + '</div>';
+    html += '<div style="font-size:.78rem;color:var(--muted);margin-top:3px;margin-bottom:12px">' + st.totalUnits.toLocaleString() + ' units across ' + Object.keys(st.items).length + ' SKUs</div>';
+    if (topPallets.length) {
+      html += '<div style="border-top:1px solid var(--border);padding-top:10px">';
+      html += '<div style="font-size:.65rem;color:var(--muted);font-family:var(--font);font-weight:700;letter-spacing:.08em;margin-bottom:6px">LARGEST PALLETS</div>';
+      for (const p of topPallets) {
+        html += '<div style="display:flex;justify-content:space-between;font-size:.75rem;padding:3px 0;border-bottom:1px solid var(--border)">';
+        html += '<span style="font-family:var(--font);font-weight:700;color:var(--accent)">' + esc(p.pid) + '</span>';
+        html += '<span style="color:var(--muted)">' + p.units + ' units · ' + new Date(p.created).toLocaleDateString() + '</span>';
+        html += '</div>';
+      }
+      html += '</div>';
+    } else {
+      html += '<div style="font-size:.78rem;color:var(--muted);font-style:italic">No pallets yet</div>';
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+
+  // Breakdown progress bars
+  html += '<div class="card p16">';
+  html += '<div style="font-family:var(--font);font-size:.7rem;font-weight:700;letter-spacing:.1em;color:var(--muted);margin-bottom:12px">PALLET DISTRIBUTION</div>';
+  for (const cust of customers) {
+    const st = stats[cust];
+    const pct = grandPallets > 0 ? Math.round(st.totalPallets / grandPallets * 100) : 0;
+    const color = custColor[cust];
+    html += '<div style="margin-bottom:10px">';
+    html += '<div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:4px">';
+    html += '<span style="font-weight:600;color:' + color + '">' + esc(cust) + '</span>';
+    html += '<span style="color:var(--muted)">' + st.totalPallets + ' pallets (' + pct + '%)</span>';
+    html += '</div>';
+    html += '<div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden">';
+    html += '<div style="height:100%;width:' + pct + '%;background:' + color + ';border-radius:4px;transition:width .4s"></div>';
+    html += '</div></div>';
+  }
+  html += '</div>';
+
+  return html;
+}
+
 function buildPalletsView() {
   const rawEntries = Object.entries(liveData.pallets);
   if (!rawEntries.length) return '<div class="empty">No pallets yet</div>';
