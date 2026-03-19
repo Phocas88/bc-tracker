@@ -3710,9 +3710,10 @@ function renderManager() {
   // Sub-tab nav + export
   html += '<div class="flex between center mb16 wrap gap10">';
   html += '<div class="flex gap8">';
-  html += '<button class="btn-tab ' + (subTab==="orders"?"active":"") + '" id="st-orders">📋 ORDERS</button>';
-  html += '<button class="btn-tab ' + (subTab==="pallets"?"active":"") + '" id="st-pallets">🪟 PALLETS</button>';
-  html += '<button class="btn-tab ' + (subTab==="activity"?"active":"") + '" id="st-activity">⚡ ACTIVITY</button>';
+  html += '<button class="btn-tab ' + (subTab==="orders"?"active":"") + '" id="st-orders" onclick="window._setSubTab(\'orders\')">📋 ORDERS</button>';
+  html += '<button class="btn-tab ' + (subTab==="pallets"?"active":"") + '" id="st-pallets" onclick="window._setSubTab(\'pallets\')">🪟 PALLETS</button>';
+  html += '<button class="btn-tab ' + (subTab==="activity"?"active":"") + '" id="st-activity" onclick="window._setSubTab(\'activity\')">⚡ ACTIVITY</button>';
+  html += '<button class="btn-tab ' + (subTab==="summary"?"active":"") + '" id="st-summary" onclick="window._setSubTab(\'summary\')">📊 SUMMARY</button>';
   html += '</div>';
   html += '<button class="btn btn-outline btn-sm" id="export-btn" style="color:var(--green);border-color:var(--green)">⬇ EXPORT EXCEL</button>';
   html += '<button class="btn btn-outline btn-sm" id="recalc-btn" style="color:var(--accent);border-color:var(--accent)">🔄 RECALC COUNTS</button>';
@@ -3729,10 +3730,10 @@ function renderManager() {
   mc.innerHTML = html;
 
   // Events — no inline onclick
-  document.getElementById("st-orders").onclick  = () => { subTab="orders";  refreshSubTab(); };
-  document.getElementById("st-pallets").onclick = () => { subTab="pallets"; refreshSubTab(); };
-  document.getElementById("st-activity").onclick= () => { subTab="activity";refreshSubTab(); };
-  document.getElementById("st-summary").onclick = () => { subTab="summary"; refreshSubTab(); };
+  const _so = document.getElementById("st-orders");   if(_so) _so.onclick  = () => { subTab="orders";  refreshSubTab(); };
+  const _sp = document.getElementById("st-pallets");  if(_sp) _sp.onclick  = () => { subTab="pallets"; refreshSubTab(); };
+  const _sa = document.getElementById("st-activity"); if(_sa) _sa.onclick  = () => { subTab="activity";refreshSubTab(); };
+  const _ss = document.getElementById("st-summary");  if(_ss) _ss.onclick  = () => { subTab="summary"; refreshSubTab(); };
   document.getElementById("export-btn").onclick = exportExcel;
   document.getElementById("recalc-btn").onclick = recalcAllCounts;
 
@@ -3749,10 +3750,15 @@ function refreshSubTab() {
       (subTab==="activity" && b.id==="st-activity") ||
       (subTab==="summary"  && b.id==="st-summary"));
   });
-  if (subTab==="orders")        el.innerHTML = buildOrdersTable();
-  else if (subTab==="pallets")  el.innerHTML = buildPalletsView();
-  else if (subTab==="summary")  el.innerHTML = buildPalletSummary();
-  else                          el.innerHTML = buildActivityFeed();
+  try {
+    if (subTab==="orders")        el.innerHTML = buildOrdersTable();
+    else if (subTab==="pallets")  el.innerHTML = buildPalletsView();
+    else if (subTab==="summary")  el.innerHTML = buildPalletSummary();
+    else                          el.innerHTML = buildActivityFeed();
+  } catch(e) {
+    console.error('[refreshSubTab]', e);
+    el.innerHTML = '<div class="empty" style="color:var(--red)">Error: ' + esc(String(e)) + '</div>';
+  }
   attachManagerEvents();
 }
 
