@@ -3995,97 +3995,76 @@ function buildOrdersTable() {
 // ══════════════════════════════════════════════════════
 function buildPalletSummary() {
   const customers = ["Beall's", "SJL", "Key Account", "Building 715"];
-  const custKey = { "Beall's":"bealls", "SJL":"sjl", "Key Account":"ka", "Building 715":"purple" };
-  const custColor = { "Beall's":"var(--bealls)", "SJL":"var(--sjl)", "Key Account":"var(--ka)", "Building 715":"var(--purple)" };
+  const custColor  = {"Beall's":"var(--bealls)","SJL":"var(--sjl)","Key Account":"var(--ka)","Building 715":"var(--purple)"};
+  const custBadge  = {"Beall's":"b-bealls","SJL":"b-sjl","Key Account":"b-ka","Building 715":"b-purple"};
 
-  // Aggregate pallet data per customer
+  // Aggregate
   const stats = {};
-  for (const cust of customers) {
-    stats[cust] = { pallets: [], totalPallets: 0, totalUnits: 0, items: {} };
-  }
+  for (const cust of customers) stats[cust] = { pallets:0, units:0, skus: new Set() };
 
-  for (const [pid, pdata] of Object.entries(liveData.pallets)) {
-    // Determine primary customer for this pallet
-    const dest = pdata.dest || "";
+  for (const [pid, pd] of Object.entries(liveData.pallets)) {
+    const dest = pd.dest || "";
     let cust = "Building 715";
-    if (dest.includes("Beall"))       cust = "Beall's";
-    else if (dest.includes("SJL"))    cust = "SJL";
-    else if (dest.includes("Key"))    cust = "Key Account";
-
-    const items = Object.values(pdata.items || {});
-    const units = items.reduce((s, it) => s + (it.qty || 1), 0);
-    if (!stats[cust]) stats[cust] = { pallets: [], totalPallets: 0, totalUnits: 0, items: {} };
-    stats[cust].pallets.push({ pid, units, created: pdata.created || 0 });
-    stats[cust].totalPallets++;
-    stats[cust].totalUnits += units;
-    for (const it of items) {
-      stats[cust].items[it.item] = (stats[cust].items[it.item] || 0) + (it.qty || 1);
+    if (dest.includes("Beall"))    cust = "Beall's";
+    else if (dest.includes("SJL")) cust = "SJL";
+    else if (dest.includes("Key")) cust = "Key Account";
+    stats[cust].pallets++;
+    for (const it of Object.values(pd.items || {})) {
+      stats[cust].units += (it.qty || 1);
+      stats[cust].skus.add(it.item);
     }
   }
 
-  // Grand totals
-  const grandPallets = Object.values(stats).reduce((s, st) => s + st.totalPallets, 0);
-  const grandUnits   = Object.values(stats).reduce((s, st) => s + st.totalUnits, 0);
+  const totalPallets = customers.reduce((s,k) => s + stats[k].pallets, 0);
+  const totalUnits   = customers.reduce((s,k) => s + stats[k].units, 0);
 
-  let html = '';
+  let html = '<div class="card" style="overflow:hidden">';
 
-  // Grand total bar
-  html += '<div class="card p16 mb16" style="text-align:center">';
-  html += '<div style="font-family:var(--font);font-size:.7rem;font-weight:700;letter-spacing:.1em;color:var(--muted);margin-bottom:4px">TOTAL PALLETS BUILT</div>';
-  html += '<div style="font-family:var(--font);font-size:3rem;font-weight:900;color:var(--accent);line-height:1">' + grandPallets + '</div>';
-  html += '<div style="font-size:.82rem;color:var(--muted);margin-top:4px">' + grandUnits.toLocaleString() + ' total units palletized</div>';
+  // Header
+  html += '<div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">';
+  html += '<div style="font-family:var(--font);font-size:.7rem;font-weight:700;letter-spacing:.1em;color:var(--muted)">PALLET TOTALS BY CUSTOMER</div>';
+  html += '<div style="font-size:.78rem;color:var(--muted)">' + totalPallets + ' pallets &nbsp;·&nbsp; ' + totalUnits.toLocaleString() + ' units total</div>';
   html += '</div>';
 
-  // Per-customer cards grid
-  html += '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:20px">';
+  // Table
+  html += '<table style="width:100%;border-collapse:collapse">';
+  html += '<thead><tr style="background:var(--surface)">';
+  html += '<th style="padding:10px 18px;text-align:left;font-family:var(--font);font-size:.68rem;font-weight:700;letter-spacing:.1em;color:var(--muted);border-bottom:1.5px solid var(--border)">CUSTOMER</th>';
+  html += '<th style="padding:10px 18px;text-align:right;font-family:var(--font);font-size:.68rem;font-weight:700;letter-spacing:.1em;color:var(--muted);border-bottom:1.5px solid var(--border)">PALLETS</th>';
+  html += '<th style="padding:10px 18px;text-align:right;font-family:var(--font);font-size:.68rem;font-weight:700;letter-spacing:.1em;color:var(--muted);border-bottom:1.5px solid var(--border)">UNITS</th>';
+  html += '<th style="padding:10px 18px;text-align:right;font-family:var(--font);font-size:.68rem;font-weight:700;letter-spacing:.1em;color:var(--muted);border-bottom:1.5px solid var(--border)">SKUs</th>';
+  html += '<th style="padding:10px 18px;text-align:left;font-family:var(--font);font-size:.68rem;font-weight:700;letter-spacing:.1em;color:var(--muted);border-bottom:1.5px solid var(--border)">SHARE</th>';
+  html += '</tr></thead><tbody>';
+
   for (const cust of customers) {
     const st = stats[cust];
+    const pct = totalPallets > 0 ? Math.round(st.pallets / totalPallets * 100) : 0;
     const color = custColor[cust];
-    const topPallets = [...st.pallets].sort((a,b)=>b.units-a.units).slice(0,5);
-    html += '<div class="card p16">';
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
-    html += '<span style="font-family:var(--font);font-size:.85rem;font-weight:800;color:' + color + '">' + esc(cust) + '</span>';
-    html += '<span class="badge b-' + custKey[cust] + '">' + st.totalPallets + ' pallets</span>';
-    html += '</div>';
-    html += '<div style="font-family:var(--font);font-size:2.2rem;font-weight:900;color:' + color + ';line-height:1">' + st.totalPallets + '</div>';
-    html += '<div style="font-size:.78rem;color:var(--muted);margin-top:3px;margin-bottom:12px">' + st.totalUnits.toLocaleString() + ' units across ' + Object.keys(st.items).length + ' SKUs</div>';
-    if (topPallets.length) {
-      html += '<div style="border-top:1px solid var(--border);padding-top:10px">';
-      html += '<div style="font-size:.65rem;color:var(--muted);font-family:var(--font);font-weight:700;letter-spacing:.08em;margin-bottom:6px">LARGEST PALLETS</div>';
-      for (const p of topPallets) {
-        html += '<div style="display:flex;justify-content:space-between;font-size:.75rem;padding:3px 0;border-bottom:1px solid var(--border)">';
-        html += '<span style="font-family:var(--font);font-weight:700;color:var(--accent)">' + esc(p.pid) + '</span>';
-        html += '<span style="color:var(--muted)">' + p.units + ' units · ' + new Date(p.created).toLocaleDateString() + '</span>';
-        html += '</div>';
-      }
-      html += '</div>';
-    } else {
-      html += '<div style="font-size:.78rem;color:var(--muted);font-style:italic">No pallets yet</div>';
-    }
-    html += '</div>';
+    html += '<tr style="border-bottom:1px solid var(--border)">';
+    html += '<td style="padding:13px 18px"><span class="badge ' + custBadge[cust] + '">' + esc(cust) + '</span></td>';
+    html += '<td style="padding:13px 18px;text-align:right;font-family:var(--font);font-size:1.4rem;font-weight:900;color:' + color + '">' + st.pallets + '</td>';
+    html += '<td style="padding:13px 18px;text-align:right;font-family:var(--font);font-weight:700;color:var(--text)">' + st.units.toLocaleString() + '</td>';
+    html += '<td style="padding:13px 18px;text-align:right;color:var(--muted)">' + st.skus.size + '</td>';
+    html += '<td style="padding:13px 18px;min-width:160px">';
+    html += '<div style="display:flex;align-items:center;gap:10px">';
+    html += '<div style="flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden">';
+    html += '<div style="height:100%;width:' + pct + '%;background:' + color + ';border-radius:3px"></div></div>';
+    html += '<span style="font-size:.78rem;color:var(--muted);min-width:32px">' + pct + '%</span>';
+    html += '</div></td></tr>';
   }
-  html += '</div>';
 
-  // Breakdown progress bars
-  html += '<div class="card p16">';
-  html += '<div style="font-family:var(--font);font-size:.7rem;font-weight:700;letter-spacing:.1em;color:var(--muted);margin-bottom:12px">PALLET DISTRIBUTION</div>';
-  for (const cust of customers) {
-    const st = stats[cust];
-    const pct = grandPallets > 0 ? Math.round(st.totalPallets / grandPallets * 100) : 0;
-    const color = custColor[cust];
-    html += '<div style="margin-bottom:10px">';
-    html += '<div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:4px">';
-    html += '<span style="font-weight:600;color:' + color + '">' + esc(cust) + '</span>';
-    html += '<span style="color:var(--muted)">' + st.totalPallets + ' pallets (' + pct + '%)</span>';
-    html += '</div>';
-    html += '<div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden">';
-    html += '<div style="height:100%;width:' + pct + '%;background:' + color + ';border-radius:4px;transition:width .4s"></div>';
-    html += '</div></div>';
-  }
-  html += '</div>';
+  // Total row
+  html += '<tr style="background:var(--surface)">';
+  html += '<td style="padding:12px 18px;font-family:var(--font);font-weight:700;color:var(--accent)">TOTAL</td>';
+  html += '<td style="padding:12px 18px;text-align:right;font-family:var(--font);font-size:1.4rem;font-weight:900;color:var(--accent)">' + totalPallets + '</td>';
+  html += '<td style="padding:12px 18px;text-align:right;font-family:var(--font);font-weight:700;color:var(--accent)">' + totalUnits.toLocaleString() + '</td>';
+  html += '<td colspan="2"></td>';
+  html += '</tr>';
 
+  html += '</tbody></table></div>';
   return html;
 }
+
 
 function buildPalletsView() {
   const rawEntries = Object.entries(liveData.pallets);
