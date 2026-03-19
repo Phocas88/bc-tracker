@@ -3377,7 +3377,9 @@ function boot() {
       const d = snap.val() || {};
       liveData.picks   = d.picks   || {};
       liveData.pallets = d.pallets || {};
-      liveData.log     = d.log ? Object.values(d.log).sort((a,b) => b.ts - a.ts) : [];
+      liveData.log     = d.log
+        ? Object.entries(d.log).map(([k,v]) => ({...v, _key:k})).sort((a,b) => b.ts - a.ts)
+        : [];
 
       if (firstConnect) {
         firstConnect = false;
@@ -4262,6 +4264,15 @@ function attachManagerEvents() {
   const cSel = document.getElementById("act-cust-sel");
   if (cSel) cSel.onchange = () => { actFilterCust = cSel.value; refreshSubTab(); };
 
+  // Activity row reassign buttons
+  document.querySelectorAll(".reassign-log-btn").forEach(btn => {
+    btn.onclick = () => showReassignModal(
+      btn.dataset.key, btn.dataset.item,
+      btn.dataset.pallet, parseInt(btn.dataset.qty),
+      btn.dataset.cust
+    );
+  });
+
   // Order row expand/collapse on click
   document.querySelectorAll("tr.order-row").forEach(row => {
     row.onclick = () => {
@@ -4614,6 +4625,114 @@ function buildPalletsView() {
 
 
 // ─── Activity feed ────────────────────────────────────────────
+// ══════════════════════════════════════════════════════
+// REASSIGN LOG ENTRY — fix customer on activity row
+// ══════════════════════════════════════════════════════
+function showReassignModal(logKey, itemCode, palletId, qty, currentCust) {
+  const customers = ["Beall's", "SJL", "Key Account", "Building 715"];
+  const custColors = {
+    "Beall's":"var(--bealls)", "SJL":"var(--sjl)",
+    "Key Account":"var(--ka)", "Building 715":"var(--purple)"
+  };
+
+  const div = document.createElement("div");
+  div.className = "overlay";
+  div.onclick = e => { if (e.target === div) closeModal(); };
+
+  let html = '<div class="modal pop" style="max-width:420px">';
+  html += '<div style="font-family:var(--font);font-size:1.4rem;font-weight:900;color:var(--accent);margin-bottom:4px">✏ REASSIGN ENTRY</div>';
+  html += '<div style="color:var(--muted);font-size:.8rem;margin-bottom:16px">'
+    + esc(itemCode) + ' ×' + qty + ' on pallet <strong style="color:var(--accent)">' + esc(palletId) + '</strong>'
+    + '<br>Currently: <strong>' + esc(currentCust) + '</strong></div>';
+
+  html += '<div style="font-size:.68rem;color:var(--muted);font-family:var(--font);font-weight:700;letter-spacing:.1em;margin-bottom:8px">MOVE TO CUSTOMER:</div>';
+  html += '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">';
+  for (const cust of customers) {
+    if (cust === currentCust) continue; // skip current
+    const col = custColors[cust] || "var(--text)";
+    html += '<button class="reassign-choice btn" data-cust="' + esc(cust) + '" '
+      + 'style="background:none;border:2px solid ' + col + ';color:' + col + ';font-family:var(--font);font-size:1rem;font-weight:800;height:48px;border-radius:10px;cursor:pointer">'
+      + esc(cust) + '</button>';
+  }
+  html += '</div>';
+  html += '<button class="btn btn-outline w100" id="reassign-cancel">CANCEL</button>';
+  html += '</div>';
+
+  div.innerHTML = html;
+  document.getElementById("modal-root").appendChild(div);
+
+  document.getElementById("reassign-cancel").onclick = closeModal;
+  div.querySelectorAll(".reassign-choice").forEach(btn => {
+    btn.onclick = () => doReassignEntry(logKey, itemCode, palletId, qty, currentCust, btn.dataset.cust);
+  });
+}
+
+async function doReassignEntry(logKey, itemCode, palletId, qty, oldCust, newCust) {
+  const updates = {};
+
+  // 1. Update the log entry
+  const newDest  = newCust === "Building 715" ? "Building 715" : "Order: " + newCust;
+  const newCustField = newCust === "Building 715" ? "715" : newCust;
+  const newType  = newCust === "Building 715" ? "b715" : "order";
+  updates["tracker/log/" + logKey + "/customer"] = newCustField;
+  updates["tracker/log/" + logKey + "/dest"]     = newDest;
+  updates["tracker/log/" + logKey + "/type"]     = newType;
+
+  // 2. Update the pallet item(s) that match this entry
+  const pdata = liveData.pallets[palletId];
+  if (pdata) {
+    for (const [k, it] of Object.entries(pdata.items || {})) {
+      if (it.item === itemCode) {
+        updates["tracker/pallets/" + palletId + "/items/" + k + "/customer"] = newCustField;
+      }
+    }
+  }
+
+  // 3. Recalculate picks counters for this item from scratch
+  // Simulate the new pallet state
+  const tempPallets = JSON.parse(JSON.stringify(liveData.pallets));
+  if (tempPallets[palletId]) {
+    for (const k of Object.keys(tempPallets[palletId].items || {})) {
+      if (tempPallets[palletId].items[k].item === itemCode) {
+        tempPallets[palletId].items[k].customer = newCustField;
+      }
+    }
+  }
+
+  // Sum from temp state
+  const sums = {};
+  for (const pd of Object.values(tempPallets)) {
+    for (const it of Object.values(pd.items || {})) {
+      if (it.item !== itemCode) continue;
+      const cust = it.customer || "715";
+      sums[cust] = (sums[cust] || 0) + (it.qty || 1);
+    }
+  }
+
+  // Zero out old picks for this item, then set new values
+  const oldCustField = oldCust === "Building 715" ? "715" : oldCust;
+  const allCusts = new Set([
+    ...Object.keys((liveData.picks[itemCode] || {})),
+    oldCustField, newCustField
+  ]);
+  for (const cust of allCusts) {
+    const fk = cust === "715" ? "_715" : cust;
+    updates["tracker/picks/" + itemCode + "/" + fk] = sums[cust] || sums[fk] || 0;
+  }
+
+  const btns = document.querySelectorAll(".reassign-choice");
+  btns.forEach(b => { b.disabled = true; b.textContent = "SAVING..."; });
+
+  try {
+    await update(ref(db), updates);
+    closeModal();
+    showToast("✓ " + itemCode + " reassigned: " + oldCust + " → " + newCust, "var(--green)");
+  } catch(e) {
+    showToast("Reassign failed — check connection", "var(--red)");
+    btns.forEach(b => { b.disabled = false; });
+  }
+}
+
 function buildActivityFeed() {
   if (!liveData.log.length) return '<div class="empty">No activity yet</div>';
 
@@ -4682,15 +4801,23 @@ function buildActivityFeed() {
   // ── Rows ─────────────────────────────────────────────────────────
   for (const s of rows.slice(0, 200)) {
     const isBg = s.type === "b715";
-    html += '<div class="feed-row">'
-      + '<span style="font-size:.7rem;color:var(--muted);min-width:68px">' + new Date(s.ts).toLocaleTimeString() + '</span>'
-      + '<span style="font-size:.65rem;color:var(--muted);min-width:55px">' + new Date(s.ts).toLocaleDateString() + '</span>'
-      + '<span style="font-family:var(--font);font-weight:700;color:var(--accent);min-width:70px">' + esc(s.item) + '</span>'
-      + '<span style="font-family:var(--font);font-weight:700;min-width:32px">×' + (s.qty||1) + '</span>'
+    const custLabel = s.customer || s.dest || "";
+    const custBadgeClass = custLabel === "Beall's" ? "b-bealls"
+      : custLabel === "SJL" ? "b-sjl"
+      : custLabel === "Key Account" ? "b-ka"
+      : isBg ? "b-purple" : "b-green";
+    const safeKey = esc(s._key || "");
+    html += '<div class="feed-row" style="flex-wrap:nowrap">'
+      + '<span style="font-size:.7rem;color:var(--muted);min-width:68px;flex-shrink:0">' + new Date(s.ts).toLocaleTimeString() + '</span>'
+      + '<span style="font-size:.65rem;color:var(--muted);min-width:55px;flex-shrink:0">' + new Date(s.ts).toLocaleDateString() + '</span>'
+      + '<span style="font-family:var(--font);font-weight:700;color:var(--accent);min-width:70px;flex-shrink:0">' + esc(s.item) + '</span>'
+      + '<span style="font-family:var(--font);font-weight:700;min-width:32px;flex-shrink:0">×' + (s.qty||1) + '</span>'
       + '<span class="hide-sm" style="flex:1;font-size:.78rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(s.desc||"") + '</span>'
-      + '<span class="badge ' + (isBg?"b-purple":"b-green") + '">' + esc(s.customer||s.dest||"") + '</span>'
+      + '<span class="badge ' + custBadgeClass + '">' + esc(custLabel) + '</span>'
       + '<span class="badge b-amber">🪟 ' + esc(s.pallet||"") + '</span>'
-      + '<span style="font-size:.72rem;color:var(--muted);white-space:nowrap">' + esc(s.worker||"") + '</span>'
+      + '<span style="font-size:.72rem;color:var(--muted);white-space:nowrap;flex-shrink:0">' + esc(s.worker||"") + '</span>'
+      + (safeKey ? '<button class="reassign-log-btn" data-key="' + safeKey + '" data-item="' + esc(s.item) + '" data-pallet="' + esc(s.pallet||"") + '" data-qty="' + (s.qty||1) + '" data-cust="' + esc(custLabel) + '"'
+          + ' style="flex-shrink:0;background:none;border:1px solid var(--border);color:var(--muted);border-radius:5px;padding:2px 8px;font-size:.7rem;cursor:pointer;margin-left:4px">✏</button>' : '')
       + '</div>';
   }
   html += '</div>';
