@@ -4747,9 +4747,24 @@ function editPalletModal(pid) {
   html += '<button class="btn btn-green w100" id="save-qty-btn" style="margin-bottom:14px">💾 SAVE QTY CHANGES</button>';
 
   // ── Section 2: Move checked items ───────────────────────────────
-  html += '<div style="border-top:1px solid var(--border);padding-top:12px;margin-top:2px">';
-  html += '<div style="font-family:var(--font);font-size:.68rem;font-weight:700;letter-spacing:.1em;color:var(--muted);margin-bottom:8px">MOVE CHECKED ITEMS TO ANOTHER PALLET</div>';
-  html += '<input id="move-to" class="inp inp-md w100" placeholder="Enter pallet # e.g. CF00002" style="margin-bottom:8px">';
+  html += '<div style="border-top:1px solid var(--border);padding-top:14px;margin-top:2px">';
+  html += '<div style="font-family:var(--font);font-size:.68rem;font-weight:700;letter-spacing:.1em;color:var(--muted);margin-bottom:10px">MOVE CHECKED ITEMS TO ANOTHER PALLET</div>';
+
+  // Customer selector for destination
+  html += '<div style="font-size:.65rem;color:var(--muted);font-family:var(--font);font-weight:700;letter-spacing:.08em;margin-bottom:6px">DESTINATION CUSTOMER:</div>';
+  html += '<div class="flex gap8 wrap" style="margin-bottom:12px" id="move-cust-btns">';
+  const moveCusts = ["Beall\'s", "SJL", "Key Account", "Building 715"];
+  const custColors = {"Beall\'s":"var(--bealls)", "SJL":"var(--sjl)", "Key Account":"var(--ka)", "Building 715":"var(--purple)"};
+  for (const mc of moveCusts) {
+    const col = custColors[mc] || "var(--muted)";
+    html += '<button class="move-cust-btn btn btn-outline btn-sm" data-cust="' + esc(mc) + '" '
+      + 'style="border-color:' + col + ';color:' + col + '">' + esc(mc) + '</button>';
+  }
+  html += '</div>';
+  html += '<div id="move-cust-selected" style="font-size:.75rem;color:var(--muted);margin-bottom:10px">No customer selected — items keep their current customer</div>';
+
+  // Pallet destination
+  html += '<input id="move-to" class="inp inp-md w100" placeholder="Pallet # to move to (e.g. CF00002 or NEW)" style="margin-bottom:8px">';
   if (others.length) {
     html += '<div class="flex wrap gap8" style="margin-bottom:10px">';
     for (const p of others.slice(0, 10)) {
@@ -4757,7 +4772,7 @@ function editPalletModal(pid) {
     }
     html += '</div>';
   }
-  html += '<button class="btn btn-outline w100" id="move-btn" style="color:var(--sjl);border-color:var(--sjl)">↗ MOVE CHECKED ITEMS</button>';
+  html += '<button class="btn btn-accent w100" id="move-btn">↗ MOVE CHECKED ITEMS</button>';
   html += '</div>';
 
   html += '<div class="flex gap10" style="margin-top:10px">';
@@ -4772,7 +4787,20 @@ function editPalletModal(pid) {
   document.getElementById("edit-cancel").onclick = closeModal;
   document.getElementById("delete-pallet-btn").onclick = () => doDeletePallet(pid, agg);
   document.getElementById("save-qty-btn").onclick = () => doSaveQtyChanges(pid, div, agg);
-  document.getElementById("move-btn").onclick = () => doMoveItems(pid, div);
+  let selectedMoveCust = null;
+  div.querySelectorAll(".move-cust-btn").forEach(btn => {
+    btn.onclick = () => {
+      selectedMoveCust = btn.dataset.cust;
+      // Highlight selected
+      div.querySelectorAll(".move-cust-btn").forEach(b => b.style.fontWeight = '');
+      btn.style.fontWeight = '800';
+      btn.style.opacity = '1';
+      const lbl = document.getElementById('move-cust-selected');
+      if (lbl) lbl.innerHTML = '→ Moving to <strong style="color:var(--accent)">' + esc(selectedMoveCust) + '</strong>';
+    };
+  });
+
+  document.getElementById("move-btn").onclick = () => doMoveItems(pid, div, selectedMoveCust);
   div.querySelectorAll(".quick-pallet").forEach(btn => {
     btn.onclick = () => { document.getElementById("move-to").value = btn.dataset.p; };
   });
@@ -4908,45 +4936,107 @@ async function doDeleteItem(pid, code, agg) {
   }
 }
 
-async function doMoveItems(fromPid, modalEl) {
+async function doMoveItems(fromPid, modalEl, newCustomer) {
   const checked = [...modalEl.querySelectorAll("input.move-chk:checked")].map(c => c.dataset.item);
-  const toPid = (document.getElementById("move-to")?.value || "").trim().toUpperCase();
+  const toPid   = (document.getElementById("move-to")?.value || "").trim().toUpperCase();
   if (!checked.length) { showToast("Check items to move first", "var(--accent)"); return; }
-  if (!toPid)          { showToast("Enter a destination pallet", "var(--red)"); return; }
+  if (!toPid)          { showToast("Enter a destination pallet #", "var(--red)"); return; }
   if (toPid === fromPid) { showToast("Same pallet!", "var(--accent)"); return; }
 
   const fromPallet = liveData.pallets[fromPid];
   if (!fromPallet) return;
+
+  // Separate items to keep vs move
   const keepItems = {}, moveItems = [];
   let keepIdx = 0;
   for (const it of Object.values(fromPallet.items || {})) {
-    if (checked.includes(it.item)) moveItems.push(it);
+    if (checked.includes(it.item)) moveItems.push({...it});
     else keepItems[keepIdx++] = it;
   }
 
+  // Determine dest customer label for the pallet record
+  const destCust = newCustomer || null;
+  const destLabel = destCust === "Building 715" ? "Building 715"
+    : destCust ? "Order: " + destCust
+    : null; // will inherit from existing dest pallet or fromPallet
+
   const updates = {};
+
+  // Remove moved items from source pallet (or delete pallet if empty)
   if (!Object.keys(keepItems).length) updates["tracker/pallets/" + fromPid] = null;
   else updates["tracker/pallets/" + fromPid + "/items"] = keepItems;
 
+  // Write moved items to dest pallet with updated customer field
   const destPallet = liveData.pallets[toPid];
   const destCount  = destPallet ? Object.keys(destPallet.items || {}).length : 0;
   for (let i = 0; i < moveItems.length; i++) {
-    updates["tracker/pallets/" + toPid + "/items/" + (destCount + i)] = { ...moveItems[i], movedFrom: fromPid };
+    const item = {...moveItems[i], movedFrom: fromPid};
+    if (destCust) {
+      item.customer = destCust === "Building 715" ? "715" : destCust;
+    }
+    updates["tracker/pallets/" + toPid + "/items/" + (destCount + i)] = item;
   }
   if (!destPallet) {
-    updates["tracker/pallets/" + toPid + "/dest"]    = fromPallet.dest || "Building 715";
+    updates["tracker/pallets/" + toPid + "/dest"]    = destLabel || fromPallet.dest || "Building 715";
     updates["tracker/pallets/" + toPid + "/created"] = Date.now();
   }
+
+  // Recalculate picks counters for every affected item code from scratch
+  // We need to do this AFTER the above changes are applied, so we simulate the new state
+  const affectedCodes = [...new Set(moveItems.map(it => it.item))];
+  for (const code of affectedCodes) {
+    // Build a temporary view of what pallets will look like after the move
+    const tempPallets = JSON.parse(JSON.stringify(liveData.pallets));
+
+    // Apply the simulated move to tempPallets
+    if (!Object.keys(keepItems).length) delete tempPallets[fromPid];
+    else tempPallets[fromPid] = {...tempPallets[fromPid], items: keepItems};
+
+    if (!tempPallets[toPid]) {
+      tempPallets[toPid] = { dest: destLabel || fromPallet.dest || "Building 715", items: {} };
+    }
+    for (let i = 0; i < moveItems.length; i++) {
+      const item = {...moveItems[i]};
+      if (destCust) item.customer = destCust === "Building 715" ? "715" : destCust;
+      tempPallets[toPid].items[destCount + i] = item;
+    }
+
+    // Now sum from tempPallets for this code across all customers
+    const sums = {}; // customer -> qty
+    for (const [, pd] of Object.entries(tempPallets)) {
+      for (const it of Object.values(pd.items || {})) {
+        if (it.item !== code) continue;
+        const cust = it.customer || "715";
+        sums[cust] = (sums[cust] || 0) + (it.qty || 1);
+      }
+    }
+
+    // Get all customers this code has had picks for (old + new)
+    const allCusts = new Set([
+      ...Object.keys((liveData.picks[code] || {})),
+      ...Object.keys(sums)
+    ]);
+
+    for (const cust of allCusts) {
+      const firebaseKey = cust === "715" ? "_715" : cust;
+      const newVal = sums[cust] || sums[firebaseKey] || 0;
+      updates["tracker/picks/" + code + "/" + firebaseKey] = newVal;
+    }
+  }
+
+  const moveBtn = document.getElementById("move-btn");
+  if (moveBtn) { moveBtn.disabled = true; moveBtn.textContent = "MOVING..."; }
 
   try {
     await update(ref(db), updates);
     closeModal();
-    showToast("Moved " + moveItems.length + " item type(s) to " + toPid, "var(--green)");
+    const custMsg = destCust ? " → " + destCust : "";
+    showToast("✓ Moved " + moveItems.length + " item(s) to " + toPid + custMsg, "var(--green)");
   } catch(e) {
     showToast("Move failed — check connection", "var(--red)");
+    if (moveBtn) { moveBtn.disabled = false; moveBtn.textContent = "↗ MOVE CHECKED ITEMS"; }
   }
 }
-
 
 // ═══════════════════════════════════════════════════════
 // PRINT PALLET TAG
