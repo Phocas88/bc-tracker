@@ -4670,13 +4670,15 @@ function showReassignModal(logKey, itemCode, palletId, qty, currentCust) {
 async function doReassignEntry(logKey, itemCode, palletId, qty, oldCust, newCust) {
   const updates = {};
 
-  // 1. Update the log entry
+  // 1. Update the log entry (customer label for activity feed)
   const newDest  = newCust === "Building 715" ? "Building 715" : "Order: " + newCust;
   const newCustField = newCust === "Building 715" ? "715" : newCust;
   const newType  = newCust === "Building 715" ? "b715" : "order";
-  updates["tracker/log/" + logKey + "/customer"] = newCustField;
-  updates["tracker/log/" + logKey + "/dest"]     = newDest;
-  updates["tracker/log/" + logKey + "/type"]     = newType;
+  if (logKey) {
+    updates["tracker/log/" + logKey + "/customer"] = newCustField;
+    updates["tracker/log/" + logKey + "/dest"]     = newDest;
+    updates["tracker/log/" + logKey + "/type"]     = newType;
+  }
 
   // 2. Update the pallet item(s) that match this entry
   const pdata = liveData.pallets[palletId];
@@ -4716,20 +4718,26 @@ async function doReassignEntry(logKey, itemCode, palletId, qty, oldCust, newCust
     oldCustField, newCustField
   ]);
   for (const cust of allCusts) {
-    const fk = cust === "715" ? "_715" : cust;
-    updates["tracker/picks/" + itemCode + "/" + fk] = sums[cust] || sums[fk] || 0;
+    // cust from liveData.picks keys: "_715", "Beall's", "SJL", "Key Account"
+    // sums keys from pallet item.customer: "715", "Beall's", "SJL", "Key Account"
+    const fk = (cust === "715" || cust === "_715") ? "_715" : cust;
+    const sumKey = (cust === "_715") ? "715" : cust; // map back to sums key
+    updates["tracker/picks/" + itemCode + "/" + fk] = sums[sumKey] || 0;
   }
 
   const btns = document.querySelectorAll(".reassign-choice");
   btns.forEach(b => { b.disabled = true; b.textContent = "SAVING..."; });
+
+  console.log("[reassign] updates:", JSON.stringify(updates, null, 2));
 
   try {
     await update(ref(db), updates);
     closeModal();
     showToast("✓ " + itemCode + " reassigned: " + oldCust + " → " + newCust, "var(--green)");
   } catch(e) {
-    showToast("Reassign failed — check connection", "var(--red)");
-    btns.forEach(b => { b.disabled = false; });
+    console.error("[reassign] Firebase error:", e);
+    showToast("Save failed: " + (e.message || e), "var(--red)");
+    btns.forEach(b => { b.disabled = false; b.textContent = b.dataset.cust; });
   }
 }
 
@@ -5291,41 +5299,112 @@ async function recalcAllCounts() {
 }
 
 function exportExcel() {
+  if (typeof XLSX === "undefined") {
+    showToast("Excel library not loaded — refresh the page and try again", "var(--red)");
+    return;
+  }
+
   const wb = XLSX.utils.book_new();
 
-  const s1 = [["Item #","Description","Customer","Qty Ordered","Qty Filled","Qty to 715","Remaining","% Complete"]];
+  // ── Build pallet index for accurate fill counts ──────────────────
+  const palletIndex = {}; // itemCode -> {customer -> qty}
+  for (const pd of Object.values(liveData.pallets)) {
+    for (const it of Object.values(pd.items || {})) {
+      const code = it.item.toUpperCase();
+      const cust = it.customer || "715";
+      if (!palletIndex[code]) palletIndex[code] = {};
+      palletIndex[code][cust] = (palletIndex[code][cust] || 0) + (it.qty || 1);
+    }
+  }
+
+  // ── Sheet 1: Order Status (SJL + Bealls + Key Account) ──────────
+  const s1 = [["Item #","Description","Customer","Qty Ordered","Qty Filled","Remaining","% Complete"]];
   for (const row of ORDER_DATA) {
     if (row.customer === "Building 715") continue;
     const k = row.item.toUpperCase();
-    const filled = Math.min((liveData.picks[k]||{})[row.customer]||0, row.qty);
-    const b715   = (liveData.picks[k]||{})["_715"]||0;
-    s1.push([row.item, row.desc, row.customer, row.qty, filled, b715, Math.max(0,row.qty-filled), Math.round(filled/row.qty*100)+"%"]);
+    const custKey = row.customer;
+    const filled = Math.min((palletIndex[k] || {})[custKey] || 0, row.qty);
+    const remaining = Math.max(0, row.qty - filled);
+    const pct = row.qty > 0 ? Math.round(filled / row.qty * 100) : 100;
+    s1.push([row.item, row.desc, row.customer, row.qty, filled, remaining, pct + "%"]);
   }
   const ws1 = XLSX.utils.aoa_to_sheet(s1);
-  ws1["!cols"] = [{wch:10},{wch:42},{wch:10},{wch:12},{wch:10},{wch:10},{wch:10},{wch:12}];
+  ws1["!cols"] = [{wch:10},{wch:42},{wch:14},{wch:12},{wch:10},{wch:10},{wch:12}];
   XLSX.utils.book_append_sheet(wb, ws1, "Order Status");
 
-  const s2 = [["Pallet ID","Destination","Item #","Description","Customer","Qty","Worker","Time"]];
-  for (const [pid,pd] of Object.entries(liveData.pallets).sort((a,b)=>a[0].localeCompare(b[0]))) {
-    for (const it of Object.values(pd.items||{})) {
-      s2.push([pid, pd.dest||"", it.item, it.desc||"", it.customer||"", it.qty||1, it.worker||"", it.ts?new Date(it.ts).toLocaleString():""]);
-    }
+  // ── Sheet 2: Building 715 Status ─────────────────────────────────
+  const s2 = [["Item #","Description","Qty Expected","Qty Palletized","Remaining","% Complete"]];
+  for (const row of ORDER_DATA) {
+    if (row.customer !== "Building 715") continue;
+    const k = row.item.toUpperCase();
+    const filled = Math.min((palletIndex[k] || {})["715"] || 0, row.qty);
+    const remaining = Math.max(0, row.qty - filled);
+    const pct = row.qty > 0 ? Math.round(filled / row.qty * 100) : 100;
+    s2.push([row.item, row.desc, row.qty, filled, remaining, pct + "%"]);
   }
   const ws2 = XLSX.utils.aoa_to_sheet(s2);
-  ws2["!cols"] = [{wch:12},{wch:18},{wch:10},{wch:40},{wch:10},{wch:6},{wch:12},{wch:20}];
-  XLSX.utils.book_append_sheet(wb, ws2, "Pallets");
+  ws2["!cols"] = [{wch:10},{wch:42},{wch:14},{wch:14},{wch:10},{wch:12}];
+  XLSX.utils.book_append_sheet(wb, ws2, "Bldg 715 Status");
 
-  const s3 = [["Time","Worker","Item #","Description","Destination","Customer","Pallet","Qty"]];
-  for (const s of [...liveData.log].reverse()) {
-    s3.push([new Date(s.ts).toLocaleString(), s.worker, s.item, s.desc||"", s.dest||"", s.customer||"", s.pallet||"", s.qty||1]);
+  // ── Sheet 3: Pallet Summary ───────────────────────────────────────
+  const customers = ["Beall's", "SJL", "Key Account", "Building 715"];
+  const custStats = {};
+  for (const cust of customers) custStats[cust] = { pallets: 0, units: 0, skus: new Set() };
+
+  for (const [pid, pd] of Object.entries(liveData.pallets)) {
+    const dest = pd.dest || "";
+    let cust = "Building 715";
+    if (dest.includes("Beall"))    cust = "Beall's";
+    else if (dest.includes("SJL")) cust = "SJL";
+    else if (dest.includes("Key")) cust = "Key Account";
+    if (!custStats[cust]) custStats[cust] = { pallets:0, units:0, skus: new Set() };
+    custStats[cust].pallets++;
+    for (const it of Object.values(pd.items || {})) {
+      custStats[cust].units += (it.qty || 1);
+      custStats[cust].skus.add(it.item);
+    }
   }
+
+  const totalPallets = Object.values(custStats).reduce((s,v) => s + v.pallets, 0);
+  const totalUnits   = Object.values(custStats).reduce((s,v) => s + v.units, 0);
+
+  const s3 = [["Customer","Pallets Built","Total Units","Unique SKUs","% of Pallets"]];
+  for (const cust of customers) {
+    const st = custStats[cust] || { pallets:0, units:0, skus: new Set() };
+    const pct = totalPallets > 0 ? Math.round(st.pallets / totalPallets * 100) : 0;
+    s3.push([cust, st.pallets, st.units, st.skus.size, pct + "%"]);
+  }
+  s3.push(["TOTAL", totalPallets, totalUnits, "", "100%"]);
   const ws3 = XLSX.utils.aoa_to_sheet(s3);
-  ws3["!cols"] = [{wch:20},{wch:12},{wch:10},{wch:40},{wch:22},{wch:10},{wch:12},{wch:6}];
-  XLSX.utils.book_append_sheet(wb, ws3, "Activity Log");
+  ws3["!cols"] = [{wch:16},{wch:14},{wch:12},{wch:12},{wch:14}];
+  XLSX.utils.book_append_sheet(wb, ws3, "Pallet Summary");
+
+  // ── Sheet 4: All Pallets Detail ───────────────────────────────────
+  const s4 = [["Pallet ID","Destination","Item #","Description","Customer","Qty","Worker","Time"]];
+  for (const [pid,pd] of Object.entries(liveData.pallets).sort((a,b)=>a[0].localeCompare(b[0]))) {
+    for (const it of Object.values(pd.items||{})) {
+      s4.push([pid, pd.dest||"", it.item, it.desc||"", it.customer||"", it.qty||1,
+               it.worker||"", it.ts ? new Date(it.ts).toLocaleString() : ""]);
+    }
+  }
+  const ws4 = XLSX.utils.aoa_to_sheet(s4);
+  ws4["!cols"] = [{wch:12},{wch:20},{wch:10},{wch:40},{wch:14},{wch:6},{wch:12},{wch:20}];
+  XLSX.utils.book_append_sheet(wb, ws4, "Pallets Detail");
+
+  // ── Sheet 5: Activity Log ─────────────────────────────────────────
+  const s5 = [["Time","Worker","Item #","Description","Customer","Pallet","Qty"]];
+  for (const s of [...liveData.log].reverse()) {
+    s5.push([new Date(s.ts).toLocaleString(), s.worker, s.item, s.desc||"",
+             s.customer||"", s.pallet||"", s.qty||1]);
+  }
+  const ws5 = XLSX.utils.aoa_to_sheet(s5);
+  ws5["!cols"] = [{wch:20},{wch:12},{wch:10},{wch:40},{wch:14},{wch:12},{wch:6}];
+  XLSX.utils.book_append_sheet(wb, ws5, "Activity Log");
 
   XLSX.writeFile(wb, "BC_Warehouse_" + new Date().toISOString().slice(0,10) + ".xlsx");
-  showToast("Excel exported!", "var(--green)");
+  showToast("✓ Excel exported — 5 sheets", "var(--green)");
 }
+
 
 // ═══════════════════════════════════════════════════════
 // HELPERS
