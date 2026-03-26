@@ -4050,11 +4050,12 @@ function buildOrdersTable() {
 
   if (searchStr) {
     const s = searchStr.toLowerCase();
-    rows = rows.filter(r => r.item.toLowerCase().includes(s) || r.desc.toLowerCase().includes(s));
+    rows = rows.filter(r => r.item.toLowerCase().includes(s) || (r.desc||'').toLowerCase().includes(s));
   }
 
   rows.sort((a, b) => {
     let va = a[sortCol] ?? "", vb = b[sortCol] ?? "";
+    va = va == null ? "" : va; vb = vb == null ? "" : vb;
     if (typeof va === "string") { va = va.toLowerCase(); vb = vb.toLowerCase(); }
     return sortAsc ? (va < vb ? -1 : va > vb ? 1 : 0) : (va < vb ? 1 : va > vb ? -1 : 0);
   });
