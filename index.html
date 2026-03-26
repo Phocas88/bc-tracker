@@ -3646,25 +3646,36 @@ function doScan() {
   const realOrders = orders.filter(o => o.customer !== "Building 715");
   const b715Entry  = orders.find(o => o.customer === "Building 715");
 
-  let destCustomer = null;
-  for (const ord of realOrders) {
-    const filled = (liveData.picks[raw] || {})[ord.customer] || 0;
-    if (filled < ord.qty) { destCustomer = ord.customer; break; }
+  // Calculate fills from pallet data (accurate, not stale picks counter)
+  const palletFills = {}; // customer -> qty on pallets
+  for (const pd of Object.values(liveData.pallets)) {
+    for (const it of Object.values(pd.items || {})) {
+      if (it.item !== raw) continue;
+      const cust = it.customer || "715";
+      palletFills[cust] = (palletFills[cust] || 0) + (it.qty || 1);
+    }
   }
 
-  // If all real orders filled (or none exist), check if there's a 715 allocation
-  let type = "b715";
-  if (destCustomer) {
-    type = "order";
-  } else if (b715Entry) {
-    const filled715 = (liveData.picks[raw] || {})["_715"] || 0;
-    type = filled715 < b715Entry.qty ? "b715" : "b715"; // always 715 if no order
+  // Find first unfilled real order
+  let destCustomer = null;
+  for (const ord of realOrders) {
+    const filled = palletFills[ord.customer] || 0;
+    // Allow over-filling: only skip if strictly at/over the ordered qty
+    // AND we haven't explicitly been asked to go here
+    if (filled < ord.qty) { destCustomer = ord.customer; break; }
   }
+  // If all filled but there are real orders, still offer the first customer
+  // so workers can add overflow inventory
+  if (!destCustomer && realOrders.length > 0) {
+    destCustomer = realOrders[0].customer;
+  }
+
+  const type = destCustomer ? "order" : "b715";
 
   pendingScan = {
     type,
     code: raw,
-    desc: orders[0].desc,
+    desc: orders[0].desc || "",
     destCustomer,
   };
   renderPick();
@@ -3686,7 +3697,10 @@ async function doConfirm() {
   const p = pendingScan;
   const code = p.code;
   const ts = Date.now();
-  const is715 = p.type === "b715" || p.type === "notfound";
+  // If worker explicitly switched customer, respect that — never force to 715
+  const effectiveCust = custOverride || p.destCustomer;
+  const is715 = !effectiveCust || ((p.type === "b715" || p.type === "notfound") && !custOverride);
+  if (effectiveCust && !is715) p.destCustomer = effectiveCust; // apply override
   const updates = {};
 
   let orderQty = 0, b715Qty = 0;
@@ -4495,6 +4509,15 @@ function editPalletModal(pid) {
   html += '<div style="font-family:var(--font);font-size:1.5rem;font-weight:900;color:var(--accent);margin-bottom:2px">✏ EDIT PALLET ' + esc(pid) + '</div>';
   html += '<div style="color:var(--muted);font-size:.78rem;margin-bottom:14px">Edit quantities, delete items, or move items to another pallet</div>';
 
+  // ── Section 0: Add item directly ─────────────────────────────────
+  html += '<div style="font-family:var(--font);font-size:.68rem;font-weight:700;letter-spacing:.1em;color:var(--muted);margin-bottom:8px">ADD ITEM TO THIS PALLET</div>';
+  html += '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">';
+  html += '<input id="add-item-code" class="inp" placeholder="Item code e.g. 20646" style="flex:2;min-width:120px;padding:10px 12px;font-family:var(--font);font-weight:700;font-size:1rem" autofocus>';
+  html += '<input id="add-item-qty" class="inp" type="number" min="1" max="9999" value="1" placeholder="Qty" style="width:70px;padding:10px 8px;text-align:center;font-family:var(--font);font-weight:700;font-size:1rem">';
+  html += '<button id="add-item-btn" class="btn btn-green" style="padding:0 16px">+ ADD</button>';
+  html += '</div>';
+  html += '<div id="add-item-msg" style="font-size:.75rem;min-height:18px;margin-bottom:10px"></div>';
+
   // ── Section 1: Edit / Delete items ──────────────────────────────
   html += '<div style="font-family:var(--font);font-size:.68rem;font-weight:700;letter-spacing:.1em;color:var(--muted);margin-bottom:8px">ITEMS ON THIS PALLET</div>';
   html += '<div style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto;margin-bottom:16px" id="edit-items-list">';
@@ -4575,6 +4598,15 @@ function editPalletModal(pid) {
   document.getElementById("modal-root").appendChild(div);
 
   document.getElementById("edit-cancel").onclick = closeModal;
+
+  // Add Item button
+  const addItemBtn = document.getElementById("add-item-btn");
+  const addCodeInp = document.getElementById("add-item-code");
+  const addQtyInp  = document.getElementById("add-item-qty");
+  if (addItemBtn) addItemBtn.onclick = () => doAddItemToPallet(pid, addCodeInp, addQtyInp);
+  if (addCodeInp) addCodeInp.onkeydown = e => { if (e.key === "Enter") addQtyInp?.focus(); };
+  if (addQtyInp)  addQtyInp.onkeydown  = e => { if (e.key === "Enter") doAddItemToPallet(pid, addCodeInp, addQtyInp); };
+  if (addCodeInp) setTimeout(() => addCodeInp.focus(), 100);
   document.getElementById("delete-pallet-btn").onclick = () => doDeletePallet(pid, agg);
   document.getElementById("save-qty-btn").onclick = () => doSaveQtyChanges(pid, div, agg);
   let selectedMoveCust = null;
@@ -4624,6 +4656,70 @@ async function doDeletePallet(pid, agg) {
     showToast("🗑 Pallet " + pid + " deleted", "var(--red)");
   } catch(e) {
     showToast("Delete failed — check connection", "var(--red)");
+  }
+}
+
+
+async function doAddItemToPallet(pid, codeInp, qtyInp) {
+  const code = (codeInp?.value || "").trim().toUpperCase();
+  const qty  = Math.max(1, parseInt(qtyInp?.value) || 1);
+  const msg  = document.getElementById("add-item-msg");
+
+  if (!code) {
+    if (msg) { msg.textContent = "Enter an item code"; msg.style.color = "var(--red)"; }
+    codeInp?.focus();
+    return;
+  }
+
+  const orders = ORDER_LOOKUP[code];
+  const desc = orders ? (orders[0].desc || "") : "";
+
+  const pdata = liveData.pallets[pid];
+  if (!pdata) { showToast("Pallet not found", "var(--red)"); return; }
+  const dest = pdata.dest || "";
+  let customer = "715";
+  if (dest.includes("Beall"))    customer = "Beall's";
+  else if (dest.includes("SJL")) customer = "SJL";
+  else if (dest.includes("Key")) customer = "Key Account";
+
+  const ts = Date.now();
+  const existingKeys = Object.keys(pdata.items || {}).map(Number);
+  const nextIdx = existingKeys.length > 0 ? Math.max(...existingKeys) + 1 : 0;
+
+  const updates = {};
+  updates["tracker/pallets/" + pid + "/items/" + nextIdx] = {
+    item: code, desc: desc, worker: workerName, ts: ts, customer: customer, qty: qty
+  };
+
+  if (customer === "715") {
+    const cur = (liveData.picks[code] || {})["_715"] || 0;
+    updates["tracker/picks/" + code + "/_715"] = cur + qty;
+  } else {
+    const cur = (liveData.picks[code] || {})[customer] || 0;
+    updates["tracker/picks/" + code + "/" + customer] = cur + qty;
+  }
+
+  const logKey = "tracker/log/" + ts + "_" + Math.random().toString(36).slice(2, 7);
+  updates[logKey] = {
+    ts: ts, worker: workerName, item: code, desc: desc,
+    dest: customer === "715" ? "Building 715" : "Order: " + customer,
+    customer: customer === "715" ? "715" : customer,
+    pallet: pid, type: customer === "715" ? "b715" : "order", qty: qty
+  };
+
+  const addBtn = document.getElementById("add-item-btn");
+  if (addBtn) { addBtn.disabled = true; addBtn.textContent = "SAVING..."; }
+
+  try {
+    await update(ref(db), updates);
+    if (codeInp) codeInp.value = "";
+    if (qtyInp)  qtyInp.value = "1";
+    if (msg) { msg.textContent = "OK: " + code + " x" + qty + " added to " + pid; msg.style.color = "var(--green)"; }
+    if (addBtn) { addBtn.disabled = false; addBtn.textContent = "+ ADD"; }
+    codeInp?.focus();
+  } catch(e) {
+    if (msg) { msg.textContent = "Error: " + (e.message || String(e)); msg.style.color = "var(--red)"; }
+    if (addBtn) { addBtn.disabled = false; addBtn.textContent = "+ ADD"; }
   }
 }
 
