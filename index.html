@@ -2909,6 +2909,7 @@ let filterKey = "all";
 let searchStr = "";
 let lastResultHtml = "";
 let palletSortCol = "created", palletSortAsc = false;  // pallets tab sort
+let palletFilterCust = "all";  // pallets tab customer filter
 let actSortCol = "ts", actSortAsc = false;              // activity tab sort
 let actFilterWorker = "all", actFilterCust = "all";     // activity tab filters
 
@@ -3954,6 +3955,11 @@ function attachManagerEvents() {
     };
   });
 
+  // Pallet customer filter buttons
+  document.querySelectorAll(".pallet-cust-filter-btn").forEach(btn => {
+    btn.onclick = () => { palletFilterCust = btn.dataset.cust; refreshSubTab(); };
+  });
+
   // Activity sort buttons
   document.querySelectorAll(".sort-act-btn").forEach(btn => {
     btn.onclick = () => {
@@ -4236,159 +4242,91 @@ function buildPalletsView() {
   const rawEntries = Object.entries(liveData.pallets);
   if (!rawEntries.length) return '<div class="empty">No pallets yet</div>';
 
-  // Enrich entries with computed fields for sorting
-  const rows = rawEntries.map(([pid, pdata]) => {
+  const custColor = {"Beall's":"var(--bealls)","SJL":"var(--sjl)","Key Account":"var(--ka)","Building 715":"var(--purple)"};
+
+  let rows = rawEntries.map(([pid, pdata]) => {
     const items = Object.values(pdata.items || {});
     const workers = [...new Set(items.map(i => i.worker))];
-    const customers = [...new Set(items.map(i => i.customer).filter(Boolean))];
     const totalQty = items.reduce((s, it) => s + (it.qty||1), 0);
-    return { pid, pdata, items, workers, customers, totalQty };
+    const dest = pdata.dest || "";
+    let primaryCust = "Building 715";
+    if (dest.includes("Beall"))    primaryCust = "Beall's";
+    else if (dest.includes("SJL")) primaryCust = "SJL";
+    else if (dest.includes("Key")) primaryCust = "Key Account";
+    return { pid, pdata, items, workers, totalQty, primaryCust };
   });
+
+  // Filter by customer
+  if (palletFilterCust !== "all") {
+    rows = rows.filter(r => r.primaryCust === palletFilterCust);
+  }
 
   // Sort
   rows.sort((a, b) => {
     let va, vb;
     if (palletSortCol === "pid")      { va = a.pid; vb = b.pid; }
     else if (palletSortCol === "worker")   { va = a.workers[0]||""; vb = b.workers[0]||""; }
-    else if (palletSortCol === "customer") { va = a.customers[0]||""; vb = b.customers[0]||""; }
-    else if (palletSortCol === "dest")     { va = a.pdata.dest||""; vb = b.pdata.dest||""; }
+    else if (palletSortCol === "customer") { va = a.primaryCust; vb = b.primaryCust; }
     else if (palletSortCol === "qty")      { va = a.totalQty; vb = b.totalQty; }
-    else { va = a.pdata.created||0; vb = b.pdata.created||0; } // created (default)
+    else { va = a.pdata.created||0; vb = b.pdata.created||0; }
     if (typeof va === "string") { va = va.toLowerCase(); vb = vb.toLowerCase(); }
     const cmp = va < vb ? -1 : va > vb ? 1 : 0;
     return palletSortAsc ? cmp : -cmp;
   });
 
-  const cols = [
-    { key:"pid",      label:"Pallet #" },
-    { key:"created",  label:"Date" },
-    { key:"dest",     label:"Destination" },
-    { key:"worker",   label:"Worker" },
-    { key:"customer", label:"Customer" },
-    { key:"qty",      label:"Units" },
-  ];
+  const arrow = k => palletSortCol===k ? (palletSortAsc?" ↑":" ↓") : "";
+  let html = "";
 
-  const arrow = (k) => palletSortCol===k ? (palletSortAsc?" ↑":" ↓") : "";
-
-  let html = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">';
-  html += '<span style="font-size:.7rem;color:var(--muted);font-family:var(--font);font-weight:700;letter-spacing:.08em">SORT:</span>';
-  for (const col of cols) {
-    const active = palletSortCol === col.key;
-    html += '<button class="sort-pallet-btn btn btn-outline btn-sm" data-col="' + col.key + '" '
-          + 'style="' + (active ? 'border-color:var(--accent);color:var(--accent);' : '') + '">'
-          + col.label + arrow(col.key) + '</button>';
+  // Customer filter buttons
+  const filterOpts = ["all", "Beall's", "SJL", "Key Account", "Building 715"];
+  html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center">';
+  html += '<span style="font-size:.68rem;color:var(--muted);font-family:var(--font);font-weight:700;letter-spacing:.08em">FILTER:</span>';
+  for (const opt of filterOpts) {
+    const active = palletFilterCust === opt;
+    const col = opt === "all" ? "var(--accent)" : (custColor[opt] || "var(--muted)");
+    html += '<button class="pallet-cust-filter-btn btn btn-outline btn-sm" data-cust="' + esc(opt) + '" '
+      + 'style="border-color:' + col + ';color:' + col + ';' + (active ? "background:" + col + "22;font-weight:800;" : "") + '">' + (opt === "all" ? "All" : esc(opt)) + '</button>';
   }
   html += '</div>';
 
-  for (const { pid, pdata, items, workers, customers, totalQty } of rows) {
+  // Sort bar
+  html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;align-items:center">';
+  html += '<span style="font-size:.68rem;color:var(--muted);font-family:var(--font);font-weight:700;letter-spacing:.08em">SORT:</span>';
+  for (const [key, label] of [["pid","Pallet #"],["created","Date"],["customer","Customer"],["worker","Worker"],["qty","Units"]]) {
+    const active = palletSortCol === key;
+    html += '<button class="sort-pallet-btn btn btn-outline btn-sm" data-col="' + key + '" '
+      + 'style="' + (active ? "border-color:var(--accent);color:var(--accent);" : "") + '">' + label + arrow(key) + '</button>';
+  }
+  html += '</div>';
+
+  html += '<div style="font-size:.72rem;color:var(--muted);margin-bottom:10px">' + rows.length + ' pallet' + (rows.length!==1?"s":"")
+    + (palletFilterCust !== "all" ? " · " + esc(palletFilterCust) : "") + '</div>';
+
+  for (const { pid, pdata, items, workers, primaryCust, totalQty } of rows) {
     const agg = {};
     for (const it of items) {
       if (!agg[it.item]) agg[it.item] = { ...it, count: 0 };
       agg[it.item].count += (it.qty || 1);
     }
-    const is715 = pdata.dest?.includes("715");
-    html += '<div class="card pallet-card">';
+    const col = custColor[primaryCust] || "var(--muted)";
+    html += '<div class="card pallet-card" style="border-left:3px solid ' + col + '">';
     html += '<div class="flex center gap8 wrap mb8">';
     html += '<span class="pallet-id">🪟 ' + esc(pid) + '</span>';
-    html += '<span class="badge ' + (is715?"b-purple":"b-green") + '">' + esc(pdata.dest || "") + '</span>';
+    html += '<span class="badge" style="border-color:' + col + ';color:' + col + ';background:' + col + '18">' + esc(pdata.dest||"") + '</span>';
     html += '<span style="font-size:.78rem;color:var(--muted);margin-left:auto">' + totalQty + ' unit' + (totalQty!==1?"s":"") + '</span>';
     html += '<button class="btn btn-outline btn-sm pallet-print-btn" data-pid="' + esc(pid) + '" style="color:var(--accent);border-color:var(--accent)">🖨 PRINT</button>';
     html += '<button class="btn btn-outline btn-sm pallet-edit-btn" data-pid="' + esc(pid) + '" style="color:var(--sjl);border-color:var(--sjl)">✏ EDIT / FIX QTY</button>';
     html += '</div>';
     html += '<div class="flex wrap gap8">';
     for (const it of Object.values(agg)) {
-      html += '<span class="item-tag">'
-        + '<span style="color:var(--accent);font-family:var(--font);font-weight:700">' + esc(it.item) + '</span>'
-        + (it.count > 1 ? ' <span style="color:var(--muted)">×' + it.count + '</span>' : '')
-        + '</span>';
+      html += '<span class="item-tag">' + '<span style="color:var(--accent);font-family:var(--font);font-weight:700">' + esc(it.item) + '</span>'
+        + (it.count > 1 ? ' <span style="color:var(--muted)">×' + it.count + '</span>' : "") + '</span>';
     }
     html += '</div>';
-    html += '<div style="margin-top:8px;font-size:.72rem;color:var(--muted)">Workers: ' + esc(workers.join(", "))
-          + ' · ' + esc(customers.join(", "))
-          + ' · ' + new Date(pdata.created).toLocaleString() + '</div>';
+    html += '<div style="margin-top:8px;font-size:.72rem;color:var(--muted)">Workers: ' + esc(workers.join(", ")) + ' · ' + new Date(pdata.created||0).toLocaleString() + '</div>';
     html += '</div>';
   }
   return html;
-}
-
-
-// ─── Activity feed ────────────────────────────────────────────
-// ══════════════════════════════════════════════════════
-// REASSIGN LOG ENTRY — fix customer on activity row
-// ══════════════════════════════════════════════════════
-function showReassignModal(logKey, itemCode, palletId, qty, currentCust) {
-  const customers = ["Beall's", "SJL", "Key Account", "Building 715"];
-  const custColors = {
-    "Beall's":"var(--bealls)", "SJL":"var(--sjl)",
-    "Key Account":"var(--ka)", "Building 715":"var(--purple)"
-  };
-
-  const div = document.createElement("div");
-  div.className = "overlay";
-  div.onclick = e => { if (e.target === div) closeModal(); };
-
-  let html = '<div class="modal pop" style="max-width:420px">';
-  html += '<div style="font-family:var(--font);font-size:1.4rem;font-weight:900;color:var(--accent);margin-bottom:4px">✏ REASSIGN ENTRY</div>';
-  html += '<div style="color:var(--muted);font-size:.8rem;margin-bottom:16px">'
-    + esc(itemCode) + ' ×' + qty + ' on pallet <strong style="color:var(--accent)">' + esc(palletId) + '</strong>'
-    + '<br>Currently: <strong>' + esc(currentCust) + '</strong></div>';
-
-  html += '<div style="font-size:.68rem;color:var(--muted);font-family:var(--font);font-weight:700;letter-spacing:.1em;margin-bottom:8px">MOVE TO CUSTOMER:</div>';
-  html += '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">';
-  for (const cust of customers) {
-    if (cust === currentCust) continue; // skip current
-    const col = custColors[cust] || "var(--text)";
-    html += '<button class="reassign-choice btn" data-cust="' + esc(cust) + '" '
-      + 'style="background:none;border:2px solid ' + col + ';color:' + col + ';font-family:var(--font);font-size:1rem;font-weight:800;height:48px;border-radius:10px;cursor:pointer">'
-      + esc(cust) + '</button>';
-  }
-  html += '</div>';
-  html += '<button class="btn btn-outline w100" id="reassign-cancel">CANCEL</button>';
-  html += '</div>';
-
-  div.innerHTML = html;
-  document.getElementById("modal-root").appendChild(div);
-
-  document.getElementById("reassign-cancel").onclick = closeModal;
-  div.querySelectorAll(".reassign-choice").forEach(btn => {
-    btn.onclick = () => doReassignEntry(logKey, itemCode, palletId, qty, currentCust, btn.dataset.cust);
-  });
-}
-
-async function doReassignEntry(logKey, itemCode, palletId, qty, oldCust, newCust) {
-  const newCustField = newCust === "Building 715" ? "715" : newCust;
-  const newDest = newCust === "Building 715" ? "Building 715" : "Order: " + newCust;
-  const updates = {};
-
-  // Update log entry
-  if (logKey) {
-    updates["tracker/log/" + logKey + "/customer"] = newCustField;
-    updates["tracker/log/" + logKey + "/dest"]     = newDest;
-    updates["tracker/log/" + logKey + "/type"]     = newCust === "Building 715" ? "b715" : "order";
-  }
-
-  // Update pallet items
-  const pdata = liveData.pallets[palletId];
-  if (pdata) {
-    for (const [k, it] of Object.entries(pdata.items || {})) {
-      if (it.item === itemCode) {
-        updates["tracker/pallets/" + palletId + "/items/" + k + "/customer"] = newCustField;
-      }
-    }
-  }
-
-  const btns = document.querySelectorAll(".reassign-choice");
-  btns.forEach(b => { b.disabled = true; b.textContent = "SAVING..."; });
-
-  try {
-    await update(ref(db), updates);
-    closeModal();
-    showToast("✓ " + itemCode + " → " + newCust + " (click RECALC COUNTS to update %)", "var(--green)");
-  } catch(e) {
-    console.error("[reassign]", e);
-    showToast("Error: " + (e.message || String(e)), "var(--red)");
-    btns.forEach(b => { b.disabled = false; b.textContent = b.dataset.cust; });
-  }
 }
 
 
@@ -5055,10 +4993,8 @@ async function recalcAllCounts() {
 
 function csvEscape(v) {
   const s = String(v == null ? "" : v);
-  if (s.includes(",") || s.includes('"') || s.includes("\n")) {
-    return '"' + s.replace(/"/g, '""') + '"';
-  }
-  return s;
+  // Always quote to prevent Excel from treating as formula or showing ####
+  return '"' + s.replace(/"/g, '""') + '"';
 }
 
 function csvRow(arr) { return arr.map(csvEscape).join(",") + "\r\n"; }
@@ -5088,16 +5024,19 @@ function exportExcel() {
     }
   }
 
-  // ── 1. Order Status CSV (SJL + Bealls + Key Account) ────────────
-  const s1 = [["Item #","Description","Customer","Status","Qty Ordered","Qty Filled","Remaining","% Complete"]];
+  // ── 1. Order Status CSV ────────────────────────────────────────
+  const s1 = [["Item #","Description","Customer","Status","Qty Ordered","Qty Picked","Remaining","% Complete"]];
+  let totalOrd = 0, totalPick = 0;
   for (const row of ORDER_DATA) {
     if (row.customer === "Building 715") continue;
     const k = row.item.toUpperCase();
-    const filled = Math.min((palletIndex[k] || {})[row.customer] || 0, row.qty);
+    const filled = (palletIndex[k] || {})[row.customer] || 0;
     const rem = Math.max(0, row.qty - filled);
-    const pct = row.qty > 0 ? Math.round(filled / row.qty * 100) : 100;
+    const pct = row.qty > 0 ? Math.round(filled / row.qty * 100) : 0;
+    totalOrd += row.qty; totalPick += filled;
     s1.push([row.item, row.desc || "", row.customer, getStatus(row.item).full, row.qty, filled, rem, pct + "%"]);
   }
+  s1.push(["TOTAL", "", "", "", totalOrd, totalPick, Math.max(0, totalOrd - totalPick), Math.round(totalPick/totalOrd*100) + "%"]);
   downloadCSV("BC_Orders_" + date + ".csv", s1);
 
   // ── 2. Pallet Summary CSV ────────────────────────────────────────
