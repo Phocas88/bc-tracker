@@ -4993,27 +4993,26 @@ async function recalcAllCounts() {
 
 function csvEscape(v) {
   const s = String(v == null ? "" : v);
-  // Always quote to prevent Excel from treating as formula or showing ####
   return '"' + s.replace(/"/g, '""') + '"';
 }
 
 function csvRow(arr) { return arr.map(csvEscape).join(",") + "\r\n"; }
 
 function downloadCSV(filename, rows) {
-  const csv = rows.map(r => csvRow(r)).join("");
+  const csv = "\uFEFF" + rows.map(r => csvRow(r)).join("");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url; a.download = filename;
   document.body.appendChild(a); a.click();
   document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
 function exportExcel() {
   const date = new Date().toISOString().slice(0, 10);
 
-  // Build pallet index for accurate fills
+  // Build pallet index from actual pallet data (no stale picks counters)
   const palletIndex = {};
   for (const pd of Object.values(liveData.pallets)) {
     for (const it of Object.values(pd.items || {})) {
@@ -5024,78 +5023,70 @@ function exportExcel() {
     }
   }
 
-  // ── 1. Order Status CSV ────────────────────────────────────────
-  const s1 = [["Item #","Description","Customer","Status","Qty Ordered","Qty Picked","Remaining","% Complete"]];
+  // 1. Orders Status CSV
+  const s1 = [["Item #","Description","Customer","Status","Qty Ordered","Qty Picked","Qty Remaining","% Complete"]];
   let totalOrd = 0, totalPick = 0;
   for (const row of ORDER_DATA) {
     if (row.customer === "Building 715") continue;
     const k = row.item.toUpperCase();
-    const filled = (palletIndex[k] || {})[row.customer] || 0;
-    const rem = Math.max(0, row.qty - filled);
-    const pct = row.qty > 0 ? Math.round(filled / row.qty * 100) : 0;
-    totalOrd += row.qty; totalPick += filled;
-    s1.push([row.item, row.desc || "", row.customer, getStatus(row.item).full, row.qty, filled, rem, pct + "%"]);
+    const picked   = (palletIndex[k] || {})[row.customer] || 0;
+    const ordered  = row.qty;
+    const remaining = Math.max(0, ordered - picked);
+    const pct = ordered > 0 ? Math.round(picked / ordered * 100) : 0;
+    totalOrd  += ordered;
+    totalPick += picked;
+    s1.push([row.item, row.desc || "", row.customer, getStatus(row.item).full, ordered, picked, remaining, pct + "%"]);
   }
-  s1.push(["TOTAL", "", "", "", totalOrd, totalPick, Math.max(0, totalOrd - totalPick), Math.round(totalPick/totalOrd*100) + "%"]);
+  s1.push(["TOTAL","","","", totalOrd, totalPick, Math.max(0, totalOrd - totalPick), Math.round(totalPick / Math.max(1,totalOrd) * 100) + "%"]);
   downloadCSV("BC_Orders_" + date + ".csv", s1);
 
-  // ── 2. Pallet Summary CSV ────────────────────────────────────────
-  setTimeout(() => {
-    const customers = ["Beall's", "SJL", "Key Account", "Building 715"];
-    const custStats = {};
-    for (const cust of customers) custStats[cust] = { pallets:0, units:0, skus: new Set() };
-    for (const [pid, pd] of Object.entries(liveData.pallets)) {
+  // 2. Pallet Summary CSV
+  setTimeout(function() {
+    const custs = ["Beall's","SJL","Key Account","Building 715"];
+    const cst = {};
+    for (const cu of custs) cst[cu] = { pallets:0, units:0, skus: new Set() };
+    for (const pd of Object.values(liveData.pallets)) {
       const dest = pd.dest || "";
-      let cust = "Building 715";
-      if (dest.includes("Beall"))    cust = "Beall's";
-      else if (dest.includes("SJL")) cust = "SJL";
-      else if (dest.includes("Key")) cust = "Key Account";
-      custStats[cust].pallets++;
-      for (const it of Object.values(pd.items || {})) {
-        custStats[cust].units += (it.qty || 1);
-        custStats[cust].skus.add(it.item);
-      }
+      let cu = "Building 715";
+      if (dest.includes("Beall")) cu = "Beall's";
+      else if (dest.includes("SJL")) cu = "SJL";
+      else if (dest.includes("Key")) cu = "Key Account";
+      cst[cu].pallets++;
+      for (const it of Object.values(pd.items || {})) { cst[cu].units += (it.qty||1); cst[cu].skus.add(it.item); }
     }
-    const totalPallets = Object.values(custStats).reduce((s,v) => s+v.pallets, 0);
-    const totalUnits   = Object.values(custStats).reduce((s,v) => s+v.units, 0);
-    const s2 = [["Customer","Pallets Built","Total Units","Unique SKUs","% of Total Pallets"]];
-    for (const cust of customers) {
-      const st = custStats[cust];
-      const pct = totalPallets > 0 ? Math.round(st.pallets/totalPallets*100) : 0;
-      s2.push([cust, st.pallets, st.units, st.skus.size, pct+"%"]);
+    const totP = Object.values(cst).reduce((s,v) => s+v.pallets, 0);
+    const totU = Object.values(cst).reduce((s,v) => s+v.units, 0);
+    const s2 = [["Customer","Pallets Built","Total Units","Unique SKUs","% of Pallets"]];
+    for (const cu of custs) {
+      s2.push([cu, cst[cu].pallets, cst[cu].units, cst[cu].skus.size, totP>0 ? Math.round(cst[cu].pallets/totP*100)+"%" : "0%"]);
     }
-    s2.push(["TOTAL", totalPallets, totalUnits, "", "100%"]);
+    s2.push(["TOTAL", totP, totU, "", "100%"]);
     downloadCSV("BC_Pallet_Summary_" + date + ".csv", s2);
-  }, 600);
+  }, 800);
 
-  // ── 3. Pallets Detail CSV ─────────────────────────────────────────
-  setTimeout(() => {
+  // 3. Pallets Detail CSV
+  setTimeout(function() {
     const s3 = [["Pallet ID","Destination","Item #","Description","Status","Customer","Qty","Worker","Time"]];
-    for (const [pid,pd] of Object.entries(liveData.pallets).sort((a,b)=>a[0].localeCompare(b[0]))) {
+    for (const [pid,pd] of Object.entries(liveData.pallets).sort((a,b) => a[0].localeCompare(b[0]))) {
       for (const it of Object.values(pd.items||{})) {
-        s3.push([pid, pd.dest||"", it.item, it.desc||"", getStatus(it.item).full, it.customer||"", it.qty||1,
-                 it.worker||"", it.ts ? new Date(it.ts).toLocaleString() : ""]);
+        s3.push([pid, pd.dest||"", it.item, it.desc||"", getStatus(it.item).full, it.customer||"", it.qty||1, it.worker||"", it.ts ? new Date(it.ts).toLocaleString() : ""]);
       }
     }
     downloadCSV("BC_Pallets_" + date + ".csv", s3);
-  }, 1200);
+  }, 1600);
 
-  // ── 4. Activity Log CSV ───────────────────────────────────────────
-  setTimeout(() => {
-    const s4 = [["Time","Worker","Item #","Description","Customer","Pallet","Qty"]];
+  // 4. Activity Log CSV
+  setTimeout(function() {
+    const s4 = [["Time","Date","Worker","Item #","Description","Customer","Pallet","Qty"]];
     for (const s of [...liveData.log].reverse()) {
-      s4.push([new Date(s.ts).toLocaleString(), s.worker, s.item, s.desc||"",
-               s.customer||"", s.pallet||"", s.qty||1]);
+      s4.push([new Date(s.ts).toLocaleTimeString(), new Date(s.ts).toLocaleDateString(), s.worker||"", s.item||"", s.desc||"", s.customer||"", s.pallet||"", s.qty||1]);
     }
     downloadCSV("BC_Activity_" + date + ".csv", s4);
-    showToast("✓ 4 CSV files downloaded — open in Excel", "var(--green)");
-  }, 1800);
+    showToast("4 CSV files downloaded - open in Excel", "var(--green)");
+  }, 2400);
 }
 
 
-// ═══════════════════════════════════════════════════════
-// HELPERS
-// ═══════════════════════════════════════════════════════
 function esc(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
 }
