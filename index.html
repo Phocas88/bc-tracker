@@ -5196,66 +5196,75 @@ function downloadCSV(filename, rows) {
 
 function exportExcel() {
   var date = new Date().toISOString().slice(0, 10);
+
+  // Build pallet index exactly like buildOrdersTable does
   var palletIndex = {};
-  var palletsByItem = {};
   for (var pid in liveData.pallets) {
     var pd = liveData.pallets[pid];
     var pitems = pd.items || {};
     for (var ki in pitems) {
       var it = pitems[ki];
       var code = it.item.toUpperCase();
-      var cust = it.customer || "715";
-      if (!palletIndex[code]) palletIndex[code] = {};
-      palletIndex[code][cust] = (palletIndex[code][cust] || 0) + (it.qty || 1);
-      if (!palletsByItem[code]) palletsByItem[code] = {};
-      palletsByItem[code][pid] = 1;
+      if (!palletIndex[code]) palletIndex[code] = [];
+      palletIndex[code].push({ pid: pid, dest: pd.dest || "", qty: it.qty || 1, customer: it.customer || "", worker: it.worker || "" });
     }
   }
-  var rows = [["Item #","Description","Customer","Status","Qty Ordered","Qty Picked","Qty Remaining","% Complete","On Pallets"]];
-  var custs = ["Beall's","SJL","Key Account"];
-  var totalOrd = 0, totalPick = 0;
-  for (var ci = 0; ci < custs.length; ci++) {
-    var cust = custs[ci];
+
+  // Build rows from ORDER_DATA — same logic as the orders screen
+  var rows = [["Item #","Description","Customer","Status","Qty Ordered","Qty Filled","Qty Remaining","% Complete","Pallets"]];
+  var totalOrd = 0, totalFill = 0;
+
+  var custGroups = ["Beall's", "SJL", "Key Account", "Building 715"];
+  for (var ci = 0; ci < custGroups.length; ci++) {
+    var cust = custGroups[ci];
     var custRows = ORDER_DATA.filter(function(r) { return r.customer === cust; });
     if (!custRows.length) continue;
-    rows.push([cust.toUpperCase() + " ORDERS","","","","","","","",""]);
-    var custOrd = 0, custPick = 0;
+
+    // Section header
+    rows.push([cust.toUpperCase(), "", "", "", "", "", "", "", ""]);
+
+    var cOrd = 0, cFill = 0;
     for (var ri = 0; ri < custRows.length; ri++) {
       var row = custRows[ri];
-      var kk = row.item.toUpperCase();
-      var picked = (palletIndex[kk] || {})[row.customer] || 0;
+      var k = row.item.toUpperCase();
+      var pallets = palletIndex[k] || [];
+
+      // Fill calc matches buildOrdersTable exactly
+      var filled = 0;
+      var palletIds = {};
+      for (var pi2 = 0; pi2 < pallets.length; pi2++) {
+        var p = pallets[pi2];
+        if (cust === "Building 715") {
+          if (p.dest && p.dest.indexOf("715") !== -1) { filled += p.qty; palletIds[p.pid] = 1; }
+        } else {
+          if (p.customer === cust) { filled += p.qty; palletIds[p.pid] = 1; }
+        }
+      }
+      filled = Math.min(filled, row.qty);
       var ordered = row.qty;
-      var remaining = Math.max(0, ordered - picked);
-      var pct = ordered > 0 ? Math.round(picked / ordered * 100) : 0;
-      var pallets = palletsByItem[kk] ? Object.keys(palletsByItem[kk]).join(", ") : "";
+      var remaining = Math.max(0, ordered - filled);
+      var pct = ordered > 0 ? Math.min(100, Math.round(filled / ordered * 100)) : 100;
       var status = typeof getStatus === "function" ? getStatus(row.item).full : "";
-      custOrd += ordered; custPick += picked;
-      totalOrd += ordered; totalPick += picked;
-      rows.push([row.item, row.desc || "", row.customer, status, ordered, picked, remaining, pct + "%", pallets]);
+      var palletList = Object.keys(palletIds).join(", ");
+      cOrd += ordered; cFill += filled;
+      totalOrd += ordered; totalFill += filled;
+      rows.push([row.item, row.desc || "", row.customer, status, ordered, filled, remaining, pct + "%", palletList]);
     }
-    rows.push(["", cust + " SUBTOTAL","","", custOrd, custPick, Math.max(0,custOrd-custPick), Math.round(custPick/Math.max(1,custOrd)*100)+"%",""]);
-    rows.push(["","","","","","","","",""]);
+
+    // Subtotal row
+    var cRem = Math.max(0, cOrd - cFill);
+    var cPct = cOrd > 0 ? Math.round(cFill / cOrd * 100) : 0;
+    rows.push(["", cust + " SUBTOTAL", "", "", cOrd, cFill, cRem, cPct + "%", ""]);
+    rows.push(["", "", "", "", "", "", "", "", ""]);
   }
-  rows.push(["GRAND TOTAL","","","", totalOrd, totalPick, Math.max(0,totalOrd-totalPick), Math.round(totalPick/Math.max(1,totalOrd)*100)+"%",""]);
+
+  // Grand total
+  var tRem = Math.max(0, totalOrd - totalFill);
+  var tPct = totalOrd > 0 ? Math.round(totalFill / totalOrd * 100) : 0;
+  rows.push(["GRAND TOTAL", "", "", "", totalOrd, totalFill, tRem, tPct + "%", ""]);
+
   downloadCSV("BC_Progress_" + date + ".csv", rows);
-  setTimeout(function() {
-    var custs2 = ["Beall's","SJL","Key Account","Building 715"];
-    var cst = {}; for (var i=0;i<custs2.length;i++) cst[custs2[i]] = {pallets:0,units:0};
-    for (var pid2 in liveData.pallets) {
-      var pd2 = liveData.pallets[pid2]; var dest = pd2.dest || ""; var cu = "Building 715";
-      if (dest.indexOf("Beall") !== -1) cu = "Beall's";
-      else if (dest.indexOf("SJL") !== -1) cu = "SJL";
-      else if (dest.indexOf("Key") !== -1) cu = "Key Account";
-      cst[cu].pallets++;
-      var its = pd2.items || {}; for (var kk in its) cst[cu].units += (its[kk].qty||1);
-    }
-    var totP=0,totU=0; for (var i=0;i<custs2.length;i++){totP+=cst[custs2[i]].pallets;totU+=cst[custs2[i]].units;}
-    var s2=[["Customer","Pallets Built","Total Units","% of Pallets"]];
-    for (var i=0;i<custs2.length;i++){var cu2=custs2[i];s2.push([cu2,cst[cu2].pallets,cst[cu2].units,totP>0?Math.round(cst[cu2].pallets/totP*100)+"%":"0%"]);}
-    s2.push(["TOTAL",totP,totU,"100%"]);
-    downloadCSV("BC_Pallet_Summary_" + date + ".csv", s2);
-    showToast("Downloaded: BC_Progress + BC_Pallet_Summary", "var(--green)");
-  }, 600);
+  showToast("BC_Progress_" + date + ".csv downloaded", "var(--green)");
 }
 
 
