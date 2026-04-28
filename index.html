@@ -5195,80 +5195,67 @@ function downloadCSV(filename, rows) {
 }
 
 function exportExcel() {
-  const date = new Date().toISOString().slice(0, 10);
-
-  // Build pallet index from actual pallet data (no stale picks counters)
-  const palletIndex = {};
-  for (const pd of Object.values(liveData.pallets)) {
-    for (const it of Object.values(pd.items || {})) {
-      const code = it.item.toUpperCase();
-      const cust = it.customer || "715";
+  var date = new Date().toISOString().slice(0, 10);
+  var palletIndex = {};
+  var palletsByItem = {};
+  for (var pid in liveData.pallets) {
+    var pd = liveData.pallets[pid];
+    var pitems = pd.items || {};
+    for (var ki in pitems) {
+      var it = pitems[ki];
+      var code = it.item.toUpperCase();
+      var cust = it.customer || "715";
       if (!palletIndex[code]) palletIndex[code] = {};
       palletIndex[code][cust] = (palletIndex[code][cust] || 0) + (it.qty || 1);
+      if (!palletsByItem[code]) palletsByItem[code] = {};
+      palletsByItem[code][pid] = 1;
     }
   }
-
-  // 1. Orders Status CSV
-  const s1 = [["Item #","Description","Customer","Status","Qty Ordered","Qty Picked","Qty Remaining","% Complete"]];
-  let totalOrd = 0, totalPick = 0;
-  for (const row of ORDER_DATA) {
-    if (row.customer === "Building 715") continue;
-    const k = row.item.toUpperCase();
-    const picked   = (palletIndex[k] || {})[row.customer] || 0;
-    const ordered  = row.qty;
-    const remaining = Math.max(0, ordered - picked);
-    const pct = ordered > 0 ? Math.round(picked / ordered * 100) : 0;
-    totalOrd  += ordered;
-    totalPick += picked;
-    s1.push([row.item, row.desc || "", row.customer, getStatus(row.item).full, ordered, picked, remaining, pct + "%"]);
+  var rows = [["Item #","Description","Customer","Status","Qty Ordered","Qty Picked","Qty Remaining","% Complete","On Pallets"]];
+  var custs = ["Beall's","SJL","Key Account"];
+  var totalOrd = 0, totalPick = 0;
+  for (var ci = 0; ci < custs.length; ci++) {
+    var cust = custs[ci];
+    var custRows = ORDER_DATA.filter(function(r) { return r.customer === cust; });
+    if (!custRows.length) continue;
+    rows.push([cust.toUpperCase() + " ORDERS","","","","","","","",""]);
+    var custOrd = 0, custPick = 0;
+    for (var ri = 0; ri < custRows.length; ri++) {
+      var row = custRows[ri];
+      var kk = row.item.toUpperCase();
+      var picked = (palletIndex[kk] || {})[row.customer] || 0;
+      var ordered = row.qty;
+      var remaining = Math.max(0, ordered - picked);
+      var pct = ordered > 0 ? Math.round(picked / ordered * 100) : 0;
+      var pallets = palletsByItem[kk] ? Object.keys(palletsByItem[kk]).join(", ") : "";
+      var status = typeof getStatus === "function" ? getStatus(row.item).full : "";
+      custOrd += ordered; custPick += picked;
+      totalOrd += ordered; totalPick += picked;
+      rows.push([row.item, row.desc || "", row.customer, status, ordered, picked, remaining, pct + "%", pallets]);
+    }
+    rows.push(["", cust + " SUBTOTAL","","", custOrd, custPick, Math.max(0,custOrd-custPick), Math.round(custPick/Math.max(1,custOrd)*100)+"%",""]);
+    rows.push(["","","","","","","","",""]);
   }
-  s1.push(["TOTAL","","","", totalOrd, totalPick, Math.max(0, totalOrd - totalPick), Math.round(totalPick / Math.max(1,totalOrd) * 100) + "%"]);
-  downloadCSV("BC_Orders_" + date + ".csv", s1);
-
-  // 2. Pallet Summary CSV
+  rows.push(["GRAND TOTAL","","","", totalOrd, totalPick, Math.max(0,totalOrd-totalPick), Math.round(totalPick/Math.max(1,totalOrd)*100)+"%",""]);
+  downloadCSV("BC_Progress_" + date + ".csv", rows);
   setTimeout(function() {
-    const custs = ["Beall's","SJL","Key Account","Building 715"];
-    const cst = {};
-    for (const cu of custs) cst[cu] = { pallets:0, units:0, skus: new Set() };
-    for (const pd of Object.values(liveData.pallets)) {
-      const dest = pd.dest || "";
-      let cu = "Building 715";
-      if (dest.includes("Beall")) cu = "Beall's";
-      else if (dest.includes("SJL")) cu = "SJL";
-      else if (dest.includes("Key")) cu = "Key Account";
+    var custs2 = ["Beall's","SJL","Key Account","Building 715"];
+    var cst = {}; for (var i=0;i<custs2.length;i++) cst[custs2[i]] = {pallets:0,units:0};
+    for (var pid2 in liveData.pallets) {
+      var pd2 = liveData.pallets[pid2]; var dest = pd2.dest || ""; var cu = "Building 715";
+      if (dest.indexOf("Beall") !== -1) cu = "Beall's";
+      else if (dest.indexOf("SJL") !== -1) cu = "SJL";
+      else if (dest.indexOf("Key") !== -1) cu = "Key Account";
       cst[cu].pallets++;
-      for (const it of Object.values(pd.items || {})) { cst[cu].units += (it.qty||1); cst[cu].skus.add(it.item); }
+      var its = pd2.items || {}; for (var kk in its) cst[cu].units += (its[kk].qty||1);
     }
-    const totP = Object.values(cst).reduce((s,v) => s+v.pallets, 0);
-    const totU = Object.values(cst).reduce((s,v) => s+v.units, 0);
-    const s2 = [["Customer","Pallets Built","Total Units","Unique SKUs","% of Pallets"]];
-    for (const cu of custs) {
-      s2.push([cu, cst[cu].pallets, cst[cu].units, cst[cu].skus.size, totP>0 ? Math.round(cst[cu].pallets/totP*100)+"%" : "0%"]);
-    }
-    s2.push(["TOTAL", totP, totU, "", "100%"]);
+    var totP=0,totU=0; for (var i=0;i<custs2.length;i++){totP+=cst[custs2[i]].pallets;totU+=cst[custs2[i]].units;}
+    var s2=[["Customer","Pallets Built","Total Units","% of Pallets"]];
+    for (var i=0;i<custs2.length;i++){var cu2=custs2[i];s2.push([cu2,cst[cu2].pallets,cst[cu2].units,totP>0?Math.round(cst[cu2].pallets/totP*100)+"%":"0%"]);}
+    s2.push(["TOTAL",totP,totU,"100%"]);
     downloadCSV("BC_Pallet_Summary_" + date + ".csv", s2);
-  }, 800);
-
-  // 3. Pallets Detail CSV
-  setTimeout(function() {
-    const s3 = [["Pallet ID","Destination","Item #","Description","Status","Customer","Qty","Worker","Time"]];
-    for (const [pid,pd] of Object.entries(liveData.pallets).sort((a,b) => a[0].localeCompare(b[0]))) {
-      for (const it of Object.values(pd.items||{})) {
-        s3.push([pid, pd.dest||"", it.item, it.desc||"", getStatus(it.item).full, it.customer||"", it.qty||1, it.worker||"", it.ts ? new Date(it.ts).toLocaleString() : ""]);
-      }
-    }
-    downloadCSV("BC_Pallets_" + date + ".csv", s3);
-  }, 1600);
-
-  // 4. Activity Log CSV
-  setTimeout(function() {
-    const s4 = [["Time","Date","Worker","Item #","Description","Customer","Pallet","Qty"]];
-    for (const s of [...liveData.log].reverse()) {
-      s4.push([new Date(s.ts).toLocaleTimeString(), new Date(s.ts).toLocaleDateString(), s.worker||"", s.item||"", s.desc||"", s.customer||"", s.pallet||"", s.qty||1]);
-    }
-    downloadCSV("BC_Activity_" + date + ".csv", s4);
-    showToast("4 CSV files downloaded - open in Excel", "var(--green)");
-  }, 2400);
+    showToast("Downloaded: BC_Progress + BC_Pallet_Summary", "var(--green)");
+  }, 600);
 }
 
 
